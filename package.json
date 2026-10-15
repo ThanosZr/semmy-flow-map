@@ -1,0 +1,27 @@
+{
+  "name": "semmy-flow-map",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Χάρτης Ροών ΣΗΜΜΥ: όλοι οι επιτρεπτοί συνδυασμοί ροών πάνω σε σφαίρα Three.js, με πλάνο 23 μαθημάτων.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "build:offline": "tsc --noEmit && BUNDLE_THREE=1 vite build",
+    "preview": "vite preview",
+    "test": "esbuild scripts/check-rules.ts --bundle --platform=node --format=esm --log-level=warning --outfile=node_modules/.cache/check-rules.mjs && node node_modules/.cache/check-rules.mjs",
+    "artifact": "node scripts/make-artifact.mjs"
+  },
+  "dependencies": {
+    "@expo-google-fonts/commissioner": "0.4.1",
+    "jspdf": "3.0.4",
+    "jspdf-autotable": "5.0.8",
+    "three": "0.160.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.160.0",
+    "typescript": "5.4.5",
+    "vite": "5.2.11"
+  }
+}

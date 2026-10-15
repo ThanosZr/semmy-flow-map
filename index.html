@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Χάρτης Ροών ΣΗΜΜΥ</title>
+<meta name="description" content="Όλοι οι επιτρεπτοί συνδυασμοί ροών της ΣΗΜΜΥ ΕΜΠ πάνω σε σφαίρα, με πλάνο 23 μαθημάτων.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Commissioner:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+</head>
+<body>
+<div class="app" id="app" lang="el" data-view="map">
+  <header class="topbar" id="topbar">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="12.5" fill="none" stroke="currentColor" stroke-width="2"/>
+        <ellipse cx="16" cy="16" rx="5.2" ry="12.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M3.5 16h25" stroke="currentColor" stroke-width="1.4"/>
+        <circle cx="21.5" cy="10" r="2.2" fill="currentColor"/>
+      </svg>
+      <div class="brand-text"><b>Χάρτης Ροών</b><span>ΣΗΜΜΥ ΕΜΠ</span></div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Προβολή">
+      <button type="button" role="tab" data-view="map" aria-selected="true" aria-controls="viewMap">Χάρτης</button>
+      <button type="button" role="tab" data-view="plan" aria-selected="false" aria-controls="viewPlan">Πλάνο μαθημάτων <span class="tbadge" id="planBadge">—</span></button>
+    </nav>
+    <div class="top-right">
+      <div class="top-count" id="topCount" title="Συνδυασμοί που απομένουν"></div>
+      <div class="filemenu">
+        <button type="button" class="iconbtn" id="fileBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="fileMenu" title="Αρχείο">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h6.5L15 6v11.5H5Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M11.5 2.5V6H15" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M7.5 10.5h5M7.5 13.5h5" stroke="currentColor" stroke-width="1.3"/></svg>
+          <span class="iconbtn-label">Αρχείο</span>
+        </button>
+        <div class="menu" id="fileMenu" role="menu" aria-label="Αρχείο" hidden>
+          <button type="button" role="menuitem" data-file="export"><b>Εξαγωγή επιλογών</b><span>ρυθμίσεις, φίλτρα, συνδυασμός, μαθήματα (.json)</span></button>
+          <button type="button" role="menuitem" data-file="import"><b>Φόρτωση από αρχείο…</b><span>εξαγωγή .json ή λίστα ECTS .csv</span></button>
+          <button type="button" role="menuitem" data-file="ects-template"><b>Πρότυπο ECTS</b><span>όλα τα μαθήματα με κενή στήλη ects (.csv)</span></button>
+          <button type="button" role="menuitem" data-file="pdf"><b>Αναφορά PDF</b><span>πλάνο, έλεγχος κανόνων, ECTS, οι δύο σφαίρες</span></button>
+        </div>
+        <input type="file" id="fileInput" accept=".json,.csv,.tsv,application/json,text/csv" hidden>
+      </div>
+      <button type="button" class="iconbtn" data-action="settings" aria-label="Ρυθμίσεις" title="Ρυθμίσεις">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 6.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8.6 2.5h2.8l.4 2 1.6.9 1.9-.7 1.4 2.4-1.5 1.3v1.8l1.5 1.3-1.4 2.4-1.9-.7-1.6.9-.4 2H8.6l-.4-2-1.6-.9-1.9.7-1.4-2.4 1.5-1.3V8.4L3.3 7.1l1.4-2.4 1.9.7 1.6-.9Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        <span class="iconbtn-label">Ρυθμίσεις</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="views">
+    <div class="view view-map" id="viewMap" role="tabpanel" aria-label="Χάρτης">
+      <aside class="pane pane-left" id="filters" aria-label="Φίλτρα"></aside>
+      <section class="viewport" id="viewport" aria-label="Σφαίρα συνδυασμών ροών">
+        <div class="gl-layer" id="glLayer"></div>
+        <div class="labels-layer" id="labelsLayer"></div>
+        <div class="vp-legend" id="vpLegend"></div>
+        <div class="vp-tblock" id="vpTblock"></div>
+        <div class="vp-tools" id="vpTools"></div>
+        <div class="vp-stats" id="vpStats" hidden></div>
+        <p class="vp-hint">Σύρε για περιστροφή, ροδέλα για ζουμ. Κλικ σε σημείο για επιλογή, σε γράμμα ροής για φίλτρο.</p>
+        <div class="vp-msg" id="vpMsg" hidden></div>
+        <div class="tip" id="tip" role="tooltip" hidden></div>
+      </section>
+      <section class="viewport viewport-2" id="viewport2" aria-label="Σφαίρα μαθημάτων">
+        <div class="gl-layer" id="glLayer2"></div>
+        <div class="labels-layer" id="labelsLayer2"></div>
+        <div class="vp-legend" id="vpLegend2"></div>
+        <div class="vp-tblock" id="vpTblock2"></div>
+        <div class="vp-tools" id="vpTools2"></div>
+        <div class="vp-stats" id="vpStats2" hidden></div>
+        <p class="vp-hint">Κλικ σε μάθημα: μπαίνει ή βγαίνει από το πλάνο. Μέσα κοντά στο γράμμα το 6ο εξάμηνο, έξω το 9ο.</p>
+        <div class="vp-msg" id="vpMsg2" hidden></div>
+        <div class="tip" id="tip2" role="tooltip" hidden></div>
+      </section>
+      <aside class="pane pane-right" id="inspector" aria-label="Επιλογή και λίστα"></aside>
+    </div>
+    <div class="view view-plan" id="viewPlan" role="tabpanel" aria-label="Πλάνο μαθημάτων" hidden></div>
+  </main>
+
+  <footer class="statusbar" id="statusbar"></footer>
+  <div class="settings" id="settings" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

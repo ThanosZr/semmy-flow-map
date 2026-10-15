@@ -1,0 +1,88 @@
+/* Layout: a drafting workstation. Filters left, the globe as the drawing sheet in the middle,
+   inspector right, status bar at the foot. Diazo print in light, cyanotype in dark. */
+:root {
+  --paper: #E8EDF3;
+  --panel: #F7F9FC;
+  --panel-2: #EEF2F7;
+  --globe: #DCE5F0;
+  --ink: #0F2747;
+  --ink-2: #4A6183;
+  --ink-3: #7F92AC;
+  --rule: #C9D3E0;
+  --grid: rgba(15, 39, 71, .06);
+  --accent: #1E5BB8;
+  --off: #A9B6C8;
+  --dir-es: #C23B2A;
+  --dir-pl: #6B3FC8;
+  --dir-tl: #0B8466;
+  --dir-en: #A86A00;
+  --shape-f3: #1E5BB8;
+  --shape-f2h1: #B4469A;
+  --shape-f2h2: #557012;
+  --ok: #1F7A4A;
+  --bad: #B42318;
+  --scrim: rgba(15, 39, 71, .28);
+  --shadow: 0 12px 36px rgba(15, 39, 71, .16);
+
+  --font-ui: "Commissioner", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --top-h: 54px;
+  --status-h: 28px;
+  --pane-l: 344px;
+  --pane-r: 340px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #081A33;
+    --panel: #0D2446;
+    --panel-2: #10294F;
+    --globe: #123058;
+    --ink: #E6EDF7;
+    --ink-2: #A2B5CF;
+    --ink-3: #6C86A9;
+    --rule: #21406B;
+    --grid: rgba(190, 215, 255, .05);
+    --accent: #8AB9FF;
+    --off: #36557F;
+    --dir-es: #FF8270;
+    --dir-pl: #BDA5FF;
+    --dir-tl: #55DAB2;
+    --dir-en: #F3BE52;
+    --shape-f3: #8AB9FF;
+    --shape-f2h1: #F29AD8;
+    --shape-f2h2: #B9DB6A;
+    --ok: #7BE0A6;
+    --bad: #FF8A80;
+    --scrim: rgba(2, 10, 24, .55);
+    --shadow: 0 12px 36px rgba(0, 0, 0, .45);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #081A33;
+  --panel: #0D2446;
+  --panel-2: #10294F;
+  --globe: #123058;
+  --ink: #E6EDF7;
+  --ink-2: #A2B5CF;
+  --ink-3: #6C86A9;
+  --rule: #21406B;
+  --grid: rgba(190, 215, 255, .05);
+  --accent: #8AB9FF;
+  --off: #36557F;
+  --dir-es: #FF8270;
+  --dir-pl: #BDA5FF;
+  --dir-tl: #55DAB2;
+  --dir-en: #F3BE52;
+  --shape-f3: #8AB9FF;
+  --shape-f2h1: #F29AD8;
+  --shape-f2h2: #B9DB6A;
+  --ok: #7BE0A6;
+  --bad: #FF8A80;
+  --scrim: rgba(2, 10, 24, .55);
+  --shadow: 0 12px 36px rgba(0, 0, 0, .45);
+  color-scheme: dark;
+}
