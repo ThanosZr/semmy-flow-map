@@ -23,9 +23,15 @@ export interface Filters {
   dir: DirId | null;
   shape: ShapeId | null;
   flows: Partial<Record<FlowId, FlowState>>;
+  /** ECTS of the 23 specialisation courses: keep combinations that can land inside [lo, hi] */
+  ects: [number, number] | null;
 }
 
-export const emptyFilters = (): Filters => ({ dir: null, shape: null, flows: {} });
+export const emptyFilters = (): Filters => ({ dir: null, shape: null, flows: {}, ects: null });
+
+/** ECTS bounds per combination, supplied by the app (they depend on the ECTS values in effect) */
+let ectsLookup: ((key: string) => { min: number; max: number } | null) | null = null;
+export function setEctsLookup(fn: typeof ectsLookup): void { ectsLookup = fn; }
 
 function shapeOf(fl: Combo['flows']): ShapeId {
   let nf = 0, nh = 0;
@@ -83,6 +89,10 @@ export const COMBO_BY_KEY: ReadonlyMap<string, Combo> = new Map(COMBOS.map(c => 
 export function matches(c: Combo, F: Filters): boolean {
   if (F.dir && c.dir !== F.dir) return false;
   if (F.shape && c.shape !== F.shape) return false;
+  if (F.ects && ectsLookup) {
+    const e = ectsLookup(c.key);
+    if (!e || e.max < F.ects[0] || e.min > F.ects[1]) return false;
+  }
   for (const f of FLOW_ORDER) {
     const s = F.flows[f];
     if (!s) continue;

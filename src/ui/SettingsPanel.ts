@@ -1,8 +1,10 @@
 /**
  * Settings sheet. Every change applies immediately and is remembered on this device.
  */
-import { DEFAULT_SETTINGS, RANGES, pixelRatioFor, type Settings } from '../state/settings';
+import { COLOR_GROUPS, PRESETS, THEME_IDS, resolveTheme, type BaseKey, type ThemeId } from '../data/themes';
+import { DEFAULT_SETTINGS, RANGES, pixelRatioFor, type SchemePref, type Settings } from '../state/settings';
 import type { Store } from '../state/store';
+import { currentScheme, swatches } from './applyTheme';
 import { esc, on, render } from './dom';
 
 type Opt<V> = { value: V; label: string };
@@ -14,6 +16,24 @@ type Field =
 const dprNow = () => (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
 
 const GROUPS: { title: string; note?: () => string; fields: Field[] }[] = [
+  {
+    title: 'Αφή και κινητό',
+    note: () => 'Σε οθόνες αφής, ένα πλωτό μενού δίπλα στις σφαίρες αλλάζει τι κάνει το δάχτυλο: περιστροφή, κύλιση σελίδας ή εξερεύνηση.',
+    fields: [
+      {
+        kind: 'select', key: 'touchDock', label: 'Πλωτό μενού σφαιρών',
+        options: [{ value: 'auto', label: 'Αυτόματα σε οθόνες αφής' }, { value: 'on', label: 'Πάντα' }, { value: 'off', label: 'Ποτέ' }],
+      },
+      {
+        kind: 'select', key: 'dockSide', label: 'Πλευρά μενού',
+        options: [{ value: 'right', label: 'Δεξιά' }, { value: 'left', label: 'Αριστερά' }],
+      },
+      {
+        kind: 'select', key: 'phoneLayout', label: 'Σφαίρες σε στενή οθόνη', help: 'Δίπλα-δίπλα: η δεύτερη σφαίρα είναι δεξιά, τη φέρνεις με σύρσιμο στη λωρίδα κάτω από τη σφαίρα, με τις καρτέλες ή με το βελάκι.',
+        options: [{ value: 'side', label: 'Δίπλα-δίπλα (σύρσιμο)' }, { value: 'stack', label: 'Η μία κάτω από την άλλη' }],
+      },
+    ],
+  },
   {
     title: 'Απόδοση γραφικών',
     note: () => `Η οθόνη σου έχει πυκνότητα ${dprNow().toFixed(2).replace(/\.?0+$/, '')}×. Η σφαίρα σχεδιάζεται μόνο όταν κάτι αλλάζει, οπότε σε ηρεμία η GPU δεν δουλεύει.`,
@@ -56,7 +76,7 @@ const GROUPS: { title: string; note?: () => string; fields: Field[] }[] = [
       { kind: 'range', key: 'backOpacity', label: 'Ορατότητα πίσω όψης', format: v => `${Math.round(v * 100)}%` },
       {
         kind: 'select', key: 'colorMode', label: 'Χρωματισμός σημείων',
-        options: [{ value: 'direction', label: 'Κατά κατεύθυνση' }, { value: 'shape', label: 'Κατά σχήμα συνδυασμού' }],
+        options: [{ value: 'direction', label: 'Κατά κατεύθυνση' }, { value: 'shape', label: 'Κατά σχήμα συνδυασμού' }, { value: 'ects', label: 'Κατά ECTS εμβάθυνσης' }],
       },
       { kind: 'switch', key: 'showGrid', label: 'Πλέγμα μεσημβρινών' },
       { kind: 'switch', key: 'showLinks', label: 'Γραμμές προς τις ροές' },
@@ -76,6 +96,7 @@ const GROUPS: { title: string; note?: () => string; fields: Field[] }[] = [
 
 export class SettingsPanel {
   private lastFocus: HTMLElement | null = null;
+  private colorsOpen = false;
 
   constructor(private root: HTMLElement, private store: Store<Settings>) {
     on(root, 'change', 'select[data-key]', el => {
@@ -96,14 +117,28 @@ export class SettingsPanel {
       const f = GROUPS.flatMap(g => g.fields).find(x => x.key === key);
       if (out && f?.kind === 'range') out.textContent = f.format(v);
     });
+    on(root, 'click', '[data-theme-id]', el => store.update(['theme'], d => { d.theme = el.dataset.themeId as ThemeId; }));
+    on(root, 'click', '[data-scheme]', el => store.update(['scheme'], d => { d.scheme = el.dataset.scheme as SchemePref; }));
+    on(root, 'input', 'input[data-color]', el => this.setColor(el.dataset.color as BaseKey, (el as HTMLInputElement).value));
+    on(root, 'change', 'input[data-color]', () => this.render());
+    on(root, 'click', '[data-color-reset]', el => this.setColor(el.dataset.colorReset as BaseKey, null, true));
+    on(root, 'click', '[data-action="colors-reset"]', () => {
+      const key = currentScheme(store.state) === 'dark' ? 'colorsDark' : 'colorsLight';
+      store.update([key], d => { d[key] = {}; });
+    });
+    root.addEventListener('toggle', ev => { if ((ev.target as HTMLElement).classList?.contains('colors')) this.colorsOpen = (ev.target as HTMLDetailsElement).open; }, true);
     on(root, 'click', '[data-action="defaults"]', () => {
-      store.update(Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[], s => Object.assign(s, DEFAULT_SETTINGS));
+      store.update(Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[], s => Object.assign(s, DEFAULT_SETTINGS, { colorsLight: {}, colorsDark: {} }));
       this.render();
     });
     on(root, 'click', '[data-action="close"]', () => this.close());
     root.addEventListener('keydown', e => { if (e.key === 'Escape') this.close(); });
     root.addEventListener('click', e => { if (e.target === root) this.close(); });
-    store.subscribe((_, changed) => { if (!this.root.hidden && [...changed].some(k => !(k in RANGES))) this.render(); });
+    // ranges and colour pickers update their own output while dragging; re-rendering would close the picker
+    store.subscribe((_, changed) => {
+      if (this.root.hidden) return;
+      if ([...changed].some(k => !(k in RANGES) && k !== 'colorsLight' && k !== 'colorsDark')) this.render();
+    });
   }
 
   get isOpen(): boolean { return !this.root.hidden; }
@@ -122,6 +157,48 @@ export class SettingsPanel {
   }
 
   toggle(): void { this.isOpen ? this.close() : this.open(); }
+
+  /** override one base colour of the scheme in effect (null = back to the preset) */
+  private setColor(key: BaseKey, value: string | null, rerender = false): void {
+    const k = currentScheme(this.store.state) === 'dark' ? 'colorsDark' : 'colorsLight';
+    this.store.update([k], d => {
+      const next = { ...d[k] };
+      if (value) next[key] = value.toUpperCase(); else delete next[key];
+      d[k] = next;
+    });
+    if (rerender) queueMicrotask(() => this.render());
+  }
+
+  private appearance(): string {
+    const s = this.store.state;
+    const scheme = currentScheme(s);
+    const overrides = scheme === 'dark' ? s.colorsDark : s.colorsLight;
+    const t = resolveTheme(s.theme, scheme, overrides);
+    const cards = THEME_IDS.map(id => {
+      const p = PRESETS[id];
+      const sw = swatches(id, scheme);
+      return `<button type="button" class="theme-card" data-theme-id="${id}" data-focus-key="theme-${id}" aria-pressed="${s.theme === id}" style="--bg:${sw[0]};--fg:${sw[1]}">
+        <span class="tc-sw" aria-hidden="true">${sw.slice(2).map(c => `<i style="background:${c}"></i>`).join('')}</span>
+        <b>${esc(p.name)}</b><span class="tc-note">${esc(p.note)}</span></button>`;
+    }).join('');
+    const schemes: [SchemePref, string][] = [['auto', 'Αυτόματα'], ['light', 'Φωτεινό'], ['dark', 'Σκούρο']];
+    const n = Object.keys(overrides).length;
+    const groups = COLOR_GROUPS.map(g => `<p class="cg-title">${esc(g.title)}</p>${g.keys.map(({ key, label }) => {
+      const id = `col-${key}`;
+      return `<div class="crow"><input type="color" id="${id}" data-color="${key}" data-focus-key="${id}" value="${t.base[key].toLowerCase()}">
+        <label for="${id}">${esc(label)}</label>${overrides[key] ? `<button type="button" class="linkbtn" data-color-reset="${key}" data-focus-key="${id}-r" title="Πίσω στο χρώμα του θέματος">επαναφορά</button>` : ''}</div>`;
+    }).join('')}`).join('');
+    return `<section class="sgroup"><h3 class="label">Εμφάνιση</h3>
+      <p class="note">Τα χρώματα ισχύουν παντού: στην εφαρμογή, στις δύο σφαίρες και στην αναφορά PDF (στο PDF πάντα η φωτεινή εκδοχή).</p>
+      <div class="theme-grid" role="group" aria-label="Θέμα">${cards}</div>
+      <div class="field"><span class="flabel" id="schemeLabel">Φωτεινό ή σκούρο</span>
+        <div class="seg seg-wide" role="group" aria-labelledby="schemeLabel">${schemes.map(([v, l]) => `<button type="button" data-scheme="${v}" data-focus-key="scheme-${v}" aria-pressed="${s.scheme === v}">${l}</button>`).join('')}</div>
+        <p class="help">Τώρα: ${scheme === 'dark' ? 'σκούρο' : 'φωτεινό'}${s.scheme === 'auto' ? ', όπως η συσκευή' : ''}.</p></div>
+      <details class="colors" ${this.colorsOpen ? 'open' : ''}><summary>Δικά σου χρώματα <span class="muted">για το ${scheme === 'dark' ? 'σκούρο' : 'φωτεινό'}${n ? ` · ${n} αλλαγμένα` : ''}</span></summary>
+        <div class="cgrid">${groups}</div>
+        <button type="button" class="btn" data-action="colors-reset" ${n ? '' : 'disabled'}>Επαναφορά χρωμάτων του θέματος</button>
+      </details></section>`;
+  }
 
   private field(f: Field): string {
     const s = this.store.state;
@@ -147,6 +224,7 @@ export class SettingsPanel {
         <header class="sheet-head"><h2 id="settingsTitle">Ρυθμίσεις</h2>
           <button type="button" class="iconbtn" data-action="close" aria-label="Κλείσιμο ρυθμίσεων">✕</button></header>
         <div class="sheet-body">
+          ${this.appearance()}
           ${GROUPS.map(g => `<section class="sgroup"><h3 class="label">${esc(g.title)}</h3>${g.note ? `<p class="note">${esc(g.note())}</p>` : ''}${g.fields.map(f => this.field(f)).join('')}</section>`).join('')}
         </div>
         <footer class="sheet-foot"><button type="button" class="btn" data-action="defaults">Επαναφορά προεπιλογών</button>

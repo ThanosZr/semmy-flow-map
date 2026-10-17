@@ -5,7 +5,10 @@
 import { CATEGORIES, COURSES, type CatId } from '../data/catalog';
 import { CORE8, DIR, ELEC_DRAWING, FLOW_ORDER, PRAKTIKI, SHAPES, type CoreChoice } from '../data/rules';
 import { COMBO_BY_KEY, matches, type Combo } from '../domain/combos';
-import { DIPLOMA_ECTS, ectsOf, fmtEcts, sumEcts } from '../data/ects';
+import {
+  CONFIDENCE_TEXT, DIPLOMA_ECTS, ECTS_SEMESTERS_1_5, ECTS_SOURCES, ECTS_THESIS, confidenceOf, ectsOf, ectsOrigin, fmtEcts, sumEcts,
+} from '../data/ects';
+import { planEcts } from '../domain/ectsRange';
 import { allocate, checks, isCoreMandatory, planText, semesterLoad, type Allocation, type FlowAllocation } from '../domain/plan';
 import type { AppState } from '../state/app-state';
 import type { Store } from '../state/store';
@@ -21,10 +24,12 @@ let ectsMap: Readonly<Record<string, number>> = {};
 function row(id: string, st: RowState, tag: string): string {
   const c = COURSES[id];
   const e = ectsOf(id, ectsMap);
+  const conf = ectsOrigin(id, ectsMap) === 'builtin' ? confidenceOf(id) : null;
+  const approx = conf === 'moved' ? '≈' : '';
   const pressed = st === 'req' || st.startsWith('on') || st === 'free';
   const locked = st === 'req' || st === 'na';
   return `<button type="button" class="crs ${st}" data-id="${id}" data-focus-key="crs-${id}" aria-pressed="${pressed}" ${locked ? 'aria-disabled="true"' : ''}>
-    <span class="box" aria-hidden="true"></span><span class="tx"><span class="cn">${esc(c.name)}</span><span class="cc">${esc(c.code)}${e === null ? '' : ` · ${fmtEcts(e)} ECTS`}</span></span>${tag ? `<span class="ct">${esc(tag)}</span>` : ''}</button>`;
+    <span class="box" aria-hidden="true"></span><span class="tx"><span class="cn">${esc(c.name)}</span><span class="cc">${esc(c.code)}${e === null ? '' : ` · <span ${approx ? `title="${esc(CONFIDENCE_TEXT.moved)}"` : ''}>${approx}${fmtEcts(e)} ECTS</span>`}</span></span>${tag ? `<span class="ct">${esc(tag)}</span>` : ''}</button>`;
 }
 
 function bySem(ids: readonly string[]): [number, string[]][] {
@@ -49,9 +54,14 @@ export function slotMeter(c: Combo, a: Allocation, compact = false): string {
 
 export class PlanView {
   private openCats = new Set<string>();
+  private actions: { canShare(): boolean; ectsOf(key: string): { min: number; max: number } | null };
 
   constructor(private root: HTMLElement, private store: Store<AppState>, private toast: Toast,
-              actions: { backToMap(): void; togglePick(id: string): void; file(a: 'pdf' | 'import' | 'ects-template'): void }) {
+              actions: {
+                backToMap(): void; togglePick(id: string): void; file(a: 'pdf' | 'import' | 'ects-template'): void;
+                share(): void; canShare(): boolean; ectsOf(key: string): { min: number; max: number } | null;
+              }) {
+    this.actions = actions;
     on(root, 'click', '.crs[data-id], .chosen [data-id]', el => actions.togglePick(el.dataset.id!));
     on(root, 'click', '[data-file]', el => actions.file(el.dataset.file as 'pdf' | 'import' | 'ects-template'));
     on(root, 'click', '[data-core]', el => {
@@ -67,6 +77,11 @@ export class PlanView {
       toast.show('Οι επιλογές καθαρίστηκαν. Τα σταθερά υποχρεωτικά μένουν.');
     });
     on(root, 'click', '[data-action="copy"]', () => this.copy());
+    on(root, 'click', '[data-action="share"]', () => actions.share());
+    on(root, 'click', '[data-action="ects-reset"]', () => {
+      store.update(['ects'], d => { d.ects = {}; });
+      toast.show('Οι δικές σου τιμές ECTS αφαιρέθηκαν· ισχύουν ξανά οι ενσωματωμένες.');
+    });
     on(root, 'click', '[data-action="map"]', () => actions.backToMap());
     root.addEventListener('toggle', ev => {
       const d = ev.target as HTMLDetailsElement;
@@ -104,11 +119,26 @@ export class PlanView {
     ectsMap = s.ects;
     const a = allocate(c, picks);
     const list = checks(c, a);
-    const planIds = Object.values(a.flows).flatMap(x => x!.counted).concat(a.free.slice(0, a.freeTarget), [ELEC_DRAWING, s.core]);
-    const e = sumEcts(planIds, s.ects);
-    const ectsBlock = e.known
-      ? `<div class="ects-total"><b>${fmtEcts(e.total)}</b><span>ECTS στα ${e.known} από τα ${planIds.length} μαθήματα του 6ου–9ου</span></div>${e.unknown ? `<p class="hnote">Λείπει τιμή για ${e.unknown} μαθήματα.</p>` : ''}`
-      : `<p class="hnote">Ο οδηγός σπουδών δεν δίνει ECTS ανά μάθημα, μόνο το σύνολο του διπλώματος. Κατέβασε το πρότυπο, συμπλήρωσε τη στήλη ects από τις σελίδες των μαθημάτων και φόρτωσέ το.</p>`;
+    const pe = planEcts(a, s.core, s.ects);
+    const range = this.actions.ectsOf(c.key);
+    const t69 = pe.spec.total + pe.core.total, unk = pe.spec.unknown + pe.core.unknown;
+    const diploma = ECTS_SEMESTERS_1_5 + t69 + ECTS_THESIS, diff = diploma - DIPLOMA_ECTS;
+    const planIds = pe.ids.concat([ELEC_DRAWING, s.core]);
+    const moved = planIds.filter(id => ectsOrigin(id, s.ects) === 'builtin' && confidenceOf(id) === 'moved');
+    const userVals = planIds.filter(id => ectsOrigin(id, s.ects) === 'user').length;
+    const complete = a.total === 23;
+    const ectsBlock = `
+      <div class="ects-grid">
+        <div><span>Εμβάθυνση (${pe.ids.length}/23)</span><b>${fmtEcts(pe.spec.total)}${pe.spec.unknown ? '<small>+?</small>' : ''}</b></div>
+        <div><span>Κορμός 6ου–9ου</span><b>${fmtEcts(pe.core.total)}${pe.core.unknown ? '<small>+?</small>' : ''}</b></div>
+        <div><span>Σύνολο 6ου–9ου</span><b>${fmtEcts(t69)}${unk ? '<small>+?</small>' : ''}</b></div>
+      </div>
+      <p class="ects-dip">Δίπλωμα${complete ? '' : ' μέχρι τώρα'}: ${ECTS_SEMESTERS_1_5} <small>(1ο–5ο)</small> + ${fmtEcts(t69)} + ${ECTS_THESIS} <small>(διπλωματική)</small> = <b>${fmtEcts(diploma)}${unk ? '<small>+?</small>' : ''}</b>${complete && !unk ? ` <span class="${diff > 0 ? 'over' : diff < 0 ? 'under' : 'eq'}">${diff === 0 ? 'ακριβώς 300' : `${diff > 0 ? '+' : ''}${fmtEcts(diff)} από τα 300`}</span>` : ''}</p>
+      ${range ? `<p class="hnote">Ο συνδυασμός ${esc(c.label)} δίνει <b>${range.min}–${range.max}</b> ECTS στα 23 μαθήματα εμβάθυνσης, ανάλογα με το ποια θα διαλέξεις.</p>` : ''}
+      <p class="hnote">Τιμές ανά μάθημα από το <a href="${ECTS_SOURCES[0].url}" target="_blank" rel="noopener">Undergraduate Curriculum 2020-21</a> της σχολής, ίδιες με το 2018-19. Ο ελληνικός οδηγός δίνει μόνο το σύνολο (${DIPLOMA_ECTS}, §1.4).${
+        unk ? ` Χωρίς τιμή: ${unk} ${unk === 1 ? 'μάθημα' : 'μαθήματα'} του πλάνου (νεότερα του 2020-21).` : ''}${
+        moved.length ? ` Με ≈: ${moved.length} ${moved.length === 1 ? 'μάθημα άλλαξε' : 'μαθήματα άλλαξαν'} εξάμηνο από τότε, η τιμή μπορεί να άλλαξε.` : ''}${
+        userVals ? ` ${userVals} τιμές από δικό σου αρχείο.` : ''}</p>`;
     const bad = list.filter(x => !x.ok).length;
     const d = DIR[c.dir];
 
@@ -142,10 +172,11 @@ export class PlanView {
             ${(['3068', '3403'] as const).map(id => `<button type="button" data-core="${id}" data-focus-key="core-${id}" aria-pressed="${s.core === id}">${esc(COURSES[id].name)} <span>${COURSES[id].sem}ο</span></button>`).join('')}
           </div>
           <p class="hnote">Αν πάρεις και το δεύτερο, μετρά ως ελεύθερο.</p></section>
-        <section class="ects"><h3 class="label">ECTS <small>δίπλωμα: ${DIPLOMA_ECTS}, §1.4</small></h3>
+        <section class="ects"><h3 class="label">ECTS <small>δίπλωμα ${DIPLOMA_ECTS}</small></h3>
           ${ectsBlock}
-          <div class="btnrow"><button type="button" class="btn" data-file="ects-template">Πρότυπο ECTS (.csv)</button><button type="button" class="btn" data-file="import">Φόρτωση αρχείου…</button></div></section>
-        <div class="btnrow"><button type="button" class="btn primary" data-file="pdf">Αναφορά PDF</button><button type="button" class="btn" data-action="copy">Αντιγραφή ως κείμενο</button><button type="button" class="btn" data-action="clear-picks">Καθαρισμός επιλογών</button></div>
+          <details class="ects-more"><summary>Δικές σου τιμές ECTS</summary><p class="hnote">Αν έχεις πιο πρόσφατες τιμές (π.χ. από τη φοιτητική πύλη), κατέβασε το αρχείο, άλλαξε τη στήλη ects και φόρτωσέ το. Οι δικές σου τιμές υπερισχύουν.</p>
+          <div class="btnrow"><button type="button" class="btn" data-file="ects-template">ECTS σε αρχείο (.csv)</button><button type="button" class="btn" data-file="import">Φόρτωση αρχείου…</button>${Object.keys(s.ects).length ? `<button type="button" class="btn" data-action="ects-reset">Επαναφορά (${Object.keys(s.ects).length} δικές σου)</button>` : ''}</div></details></section>
+        <div class="btnrow"><button type="button" class="btn primary" data-file="pdf">Αναφορά PDF</button>${this.actions.canShare() ? '<button type="button" class="btn" data-action="share">Κοινοποίηση</button>' : ''}<button type="button" class="btn" data-action="copy">Αντιγραφή ως κείμενο</button><button type="button" class="btn" data-action="clear-picks">Καθαρισμός επιλογών</button></div>
       </aside>
       <div class="plan-main">
         <div class="fcards">${c.order.map(f => this.flowCard(c, a.flows[f]!, picks)).join('')}</div>

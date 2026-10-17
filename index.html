@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Χάρτης Ροών ΣΗΜΜΥ</title>
+<meta name="theme-color" content="#F7F9FC">
 <meta name="description" content="Όλοι οι επιτρεπτοί συνδυασμοί ροών της ΣΗΜΜΥ ΕΜΠ πάνω σε σφαίρα, με πλάνο 23 μαθημάτων.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -34,8 +35,8 @@
         </button>
         <div class="menu" id="fileMenu" role="menu" aria-label="Αρχείο" hidden>
           <button type="button" role="menuitem" data-file="export"><b>Εξαγωγή επιλογών</b><span>ρυθμίσεις, φίλτρα, συνδυασμός, μαθήματα (.json)</span></button>
-          <button type="button" role="menuitem" data-file="import"><b>Φόρτωση από αρχείο…</b><span>εξαγωγή .json ή λίστα ECTS .csv</span></button>
-          <button type="button" role="menuitem" data-file="ects-template"><b>Πρότυπο ECTS</b><span>όλα τα μαθήματα με κενή στήλη ects (.csv)</span></button>
+          <button type="button" role="menuitem" data-file="import"><b>Φόρτωση από αρχείο…</b><span>εξαγωγή .json ή ECTS .csv</span></button>
+          <button type="button" role="menuitem" data-file="ects-template"><b>ECTS σε αρχείο</b><span>όλα τα μαθήματα με τις τιμές τους και την πηγή, για διόρθωση (.csv)</span></button>
           <button type="button" role="menuitem" data-file="pdf"><b>Αναφορά PDF</b><span>πλάνο, έλεγχος κανόνων, ECTS, οι δύο σφαίρες</span></button>
         </div>
         <input type="file" id="fileInput" accept=".json,.csv,.tsv,application/json,text/csv" hidden>
@@ -50,28 +51,53 @@
   <main class="views">
     <div class="view view-map" id="viewMap" role="tabpanel" aria-label="Χάρτης">
       <aside class="pane pane-left" id="filters" aria-label="Φίλτρα"></aside>
-      <section class="viewport" id="viewport" aria-label="Σφαίρα συνδυασμών ροών">
-        <div class="gl-layer" id="glLayer"></div>
-        <div class="labels-layer" id="labelsLayer"></div>
-        <div class="vp-legend" id="vpLegend"></div>
-        <div class="vp-tblock" id="vpTblock"></div>
-        <div class="vp-tools" id="vpTools"></div>
-        <div class="vp-stats" id="vpStats" hidden></div>
-        <p class="vp-hint">Σύρε για περιστροφή, ροδέλα για ζουμ. Κλικ σε σημείο για επιλογή, σε γράμμα ροής για φίλτρο.</p>
-        <div class="vp-msg" id="vpMsg" hidden></div>
-        <div class="tip" id="tip" role="tooltip" hidden></div>
-      </section>
-      <section class="viewport viewport-2" id="viewport2" aria-label="Σφαίρα μαθημάτων">
-        <div class="gl-layer" id="glLayer2"></div>
-        <div class="labels-layer" id="labelsLayer2"></div>
-        <div class="vp-legend" id="vpLegend2"></div>
-        <div class="vp-tblock" id="vpTblock2"></div>
-        <div class="vp-tools" id="vpTools2"></div>
-        <div class="vp-stats" id="vpStats2" hidden></div>
-        <p class="vp-hint">Κλικ σε μάθημα: μπαίνει ή βγαίνει από το πλάνο. Μέσα κοντά στο γράμμα το 6ο εξάμηνο, έξω το 9ο.</p>
-        <div class="vp-msg" id="vpMsg2" hidden></div>
-        <div class="tip" id="tip2" role="tooltip" hidden></div>
-      </section>
+      <div class="spheres" id="spheres" data-page="0">
+        <div class="sphere-tabs" id="sphereTabs" role="tablist" aria-label="Σφαίρες">
+          <button type="button" role="tab" data-page="0" aria-selected="true">Συνδυασμοί ροών</button>
+          <button type="button" role="tab" data-page="1" aria-selected="false">Μαθήματα</button>
+        </div>
+        <div class="sphere-track" id="sphereTrack">
+          <div class="sphere-page" data-page="0">
+            <section class="viewport" id="viewport" aria-label="Σφαίρα συνδυασμών ροών">
+              <div class="vp-stage" id="stage1">
+                <div class="gl-layer" id="glLayer"></div>
+                <div class="labels-layer" id="labelsLayer"></div>
+                <div class="tip" id="tip" role="tooltip" hidden></div>
+              </div>
+              <div class="vp-legend" id="vpLegend"></div>
+              <div class="vp-tblock" id="vpTblock"></div>
+              <div class="vp-tools" id="vpTools"></div>
+              <div class="vp-stats" id="vpStats" hidden></div>
+              <p class="vp-hint">Σύρε για περιστροφή, ροδέλα για ζουμ. Κλικ σε σημείο για επιλογή, σε γράμμα ροής για φίλτρο.</p>
+              <p class="vp-mode" hidden></p>
+              <div class="vp-gutter l" aria-hidden="true"></div><div class="vp-gutter r" aria-hidden="true"></div>
+              <div class="vp-msg" id="vpMsg" hidden></div>
+            </section>
+            <div class="vp-strip" id="selStrip"></div>
+          </div>
+          <div class="sphere-page" data-page="1" id="coursePage">
+            <section class="viewport viewport-2" id="viewport2" aria-label="Σφαίρα μαθημάτων">
+              <div class="vp-stage" id="stage2">
+                <div class="gl-layer" id="glLayer2"></div>
+                <div class="labels-layer" id="labelsLayer2"></div>
+                <div class="tip" id="tip2" role="tooltip" hidden></div>
+              </div>
+              <div class="vp-legend" id="vpLegend2"></div>
+              <div class="vp-tblock" id="vpTblock2"></div>
+              <div class="vp-tools" id="vpTools2"></div>
+              <div class="vp-stats" id="vpStats2" hidden></div>
+              <p class="vp-hint">Κλικ σε μάθημα: μπαίνει ή βγαίνει από το πλάνο. Μέσα κοντά στο γράμμα το 6ο εξάμηνο, έξω το 9ο.</p>
+              <p class="vp-mode" hidden></p>
+              <div class="vp-gutter l" aria-hidden="true"></div><div class="vp-gutter r" aria-hidden="true"></div>
+              <div class="vp-msg" id="vpMsg2" hidden></div>
+            </section>
+            <div class="vp-strip" id="courseStrip"></div>
+          </div>
+        </div>
+        <button type="button" class="pager-arrow next" data-go="1" aria-label="Σφαίρα μαθημάτων"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+        <button type="button" class="pager-arrow prev" data-go="0" aria-label="Σφαίρα συνδυασμών"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+        <p class="pager-hint" id="pagerHint" hidden>Η δεύτερη σφαίρα, με τα μαθήματα, είναι δεξιά: σύρε τη λωρίδα κάτω από τη σφαίρα, πάτα «Μαθήματα» ή το βελάκι.</p>
+      </div>
       <aside class="pane pane-right" id="inspector" aria-label="Επιλογή και λίστα"></aside>
     </div>
     <div class="view view-plan" id="viewPlan" role="tabpanel" aria-label="Πλάνο μαθημάτων" hidden></div>
@@ -80,6 +106,8 @@
   <footer class="statusbar" id="statusbar"></footer>
   <div class="settings" id="settings" hidden></div>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <nav class="dock" id="dock" aria-label="Χειρισμός σφαιρών με αφή" hidden></nav>
+  <button type="button" class="dock-handle" id="dockHandle" aria-label="Εμφάνιση μενού σφαιρών" hidden></button>
 </div>
 <script type="module" src="/src/main.ts"></script>
 </body>

@@ -12,7 +12,7 @@ import {
   ColorManagement, LinearSRGBColorSpace, PerspectiveCamera, Quaternion, Scene, Vector2, Vector3, WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { pixelRatioFor, type Settings } from '../state/settings';
+import { pixelRatioFor, type Settings, type TouchMode } from '../state/settings';
 import { AnchorLabels, type AnchorDef } from './AnchorLabels';
 import { GlobeShell } from './layers/GlobeShell';
 import { PointsLayer } from './layers/PointsLayer';
@@ -34,6 +34,9 @@ export interface RenderStats {
   frames: number;
   gpu: string;
 }
+
+export interface CardAction { id: string; label: string; primary?: boolean; pressed?: boolean }
+export type CardTarget = { kind: 'point'; i: number } | { kind: 'anchor'; id: string };
 
 export interface SphereParts {
   host: HTMLElement;
@@ -61,6 +64,8 @@ export abstract class SphereView {
   protected settings: Settings;
   protected w = 1;
   protected h = 1;
+  /** last size while visible, so a snapshot works while the view is hidden (plan view) */
+  private shown = { w: 640, h: 640 };
   protected fitDist = 4;
   protected hoverIndex = -1;
   protected hotAnchor: string | null = null;
@@ -72,6 +77,11 @@ export abstract class SphereView {
   private readonly v = new Vector3();
   private pointerInside = false;
   private down: { x: number; y: number; moved: number } | null = null;
+  /** what a finger does on this sphere (mouse and pen are not affected) */
+  private touchMode: TouchMode = 'rotate';
+  private exploring = false;
+  /** a pinned card (touch): info plus action buttons */
+  private card: CardTarget | null = null;
   private visible = { page: true, onscreen: true, view: true };
   private gpuName = '';
   private webglVersion = '';
@@ -92,8 +102,20 @@ export abstract class SphereView {
     this.shell = new GlobeShell(settings.detail);
     this.scene.add(this.shell.group, this.points.object);
     this.labels = new AnchorLabels(parts.labelsLayer, anchors,
-      id => this.onAnchorClick(id),
-      id => { this.hotAnchor = id; this.onAnchorHover(id); this.showAnchorTip(id); });
+      (id, type) => (type === 'touch' ? this.openCard({ kind: 'anchor', id }) : this.onAnchorClick(id)),
+      id => {
+        if (this.card) return; // a pinned card owns the emphasis until it closes
+        this.hotAnchor = id; this.onAnchorHover(id); this.showAnchorTip(id);
+      });
+    parts.tip.addEventListener('click', e => {
+      const b = (e.target as Element).closest<HTMLElement>('[data-card-act]');
+      if (!b || !this.card) return;
+      const act = b.dataset.cardAct!;
+      if (act === 'close') { this.closeCard(); return; }
+      const target = this.card;
+      if (this.onCardAction(target, act)) setTimeout(() => { if (this.card === target) this.renderCard(); }, 30);
+      else this.closeCard();
+    });
     this.camera.position.set(0, 0.9, 4);
     this.camera.lookAt(0, 0, 0);
   }
@@ -110,6 +132,11 @@ export abstract class SphereView {
   protected onHoverChange(): void { /* optional */ }
   protected onResize(): void { /* optional */ }
   protected applyExtraSettings(_s: Settings, _changed: ReadonlySet<keyof Settings>, _prev: Settings): void { /* optional */ }
+  /** buttons on the touch card of a point / an anchor */
+  protected pointActions(_i: number): CardAction[] { return []; }
+  protected anchorActions(_id: string): CardAction[] { return []; }
+  /** a card button was pressed; return true to keep the card open (it is redrawn) */
+  protected onCardAction(_t: CardTarget, _act: string): boolean { return false; }
 
   /** finish construction once subclass fields exist */
   protected start(): void {
@@ -185,9 +212,10 @@ export abstract class SphereView {
     ctl.autoRotate = this.settings.autoRotate;
     ctl.autoRotateSpeed = this.settings.rotateSpeed;
     ctl.addEventListener('change', () => this.loop.request());
-    ctl.addEventListener('start', () => { this.fly = null; this.hideTip(); });
+    ctl.addEventListener('start', () => { this.fly = null; this.closeCard(); this.hideTip(); });
     this.controls = ctl;
     this.bindPointer(c);
+    this.applyTouchAction();
     this.showMessage(null);
     this.loop.request();
   }
@@ -195,11 +223,26 @@ export abstract class SphereView {
   private bindPointer(c: HTMLCanvasElement): void {
     c.addEventListener('wheel', () => { this.userZoomed = true; }, { passive: true });
     c.addEventListener('pointerenter', () => { this.pointerInside = true; this.syncAutoRotate(); });
-    c.addEventListener('pointerleave', () => { this.pointerInside = false; this.setHoverIndex(-1); this.hideTip(); this.syncAutoRotate(); });
-    c.addEventListener('pointerdown', e => { this.down = { x: e.clientX, y: e.clientY, moved: 0 }; });
+    c.addEventListener('pointerleave', e => {
+      this.pointerInside = false;
+      if (e.pointerType !== 'touch' && !this.card) { this.setHoverIndex(-1); this.hideTip(); }
+      this.syncAutoRotate();
+    });
+    // capture phase: runs before OrbitControls' own listener on the same canvas
+    c.addEventListener('pointerdown', e => {
+      this.down = { x: e.clientX, y: e.clientY, moved: 0 };
+      if (e.pointerType !== 'touch' || this.touchMode === 'rotate') return;
+      e.stopImmediatePropagation(); // the sphere stays still: scrolling or exploring
+      if (this.touchMode === 'explore') {
+        this.exploring = true;
+        try { c.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+        this.explore(e);
+      }
+    }, { capture: true });
     c.addEventListener('pointermove', e => {
+      if (this.exploring) { this.explore(e); return; }
       if (this.down) { this.down.moved += Math.abs(e.movementX) + Math.abs(e.movementY); if (this.down.moved > 4) return; }
-      if (e.pointerType === 'touch') return;
+      if (e.pointerType === 'touch' || this.card) return;
       const [x, y] = this.local(e);
       const i = this.pick(x, y);
       this.setHoverIndex(i);
@@ -208,12 +251,83 @@ export abstract class SphereView {
     });
     c.addEventListener('pointerup', e => {
       const d = this.down; this.down = null;
-      if (!d || d.moved > 4 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
       const [x, y] = this.local(e);
+      if (this.exploring) {
+        this.exploring = false;
+        const i = this.pick(x, y);
+        if (i >= 0) this.openCard({ kind: 'point', i }); else this.closeCard();
+        return;
+      }
+      if (!d || d.moved > 4 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
       const i = this.pick(x, y);
+      if (e.pointerType === 'touch') { if (i >= 0) this.openCard({ kind: 'point', i }); else this.closeCard(); return; }
+      if (this.card) this.closeCard();
       if (i >= 0) { this.onPointPick(i); this.showTip(this.describePoint(i), x, y); }
     });
-    c.addEventListener('pointercancel', () => { this.down = null; });
+    c.addEventListener('pointercancel', () => { this.down = null; this.exploring = false; });
+  }
+
+  /** explore mode: the card follows the finger and shows what is underneath */
+  private explore(e: PointerEvent): void {
+    const [x, y] = this.local(e);
+    const i = this.pick(x, y);
+    this.setHoverIndex(i);
+    if (i >= 0) this.placeTip(this.cardHtml(this.describePoint(i), []), x, y, false);
+    else this.hideTip();
+  }
+
+  /* ------------------------------------------------------------------ touch cards */
+
+  setTouchMode(m: TouchMode): void {
+    if (m === this.touchMode) return;
+    this.touchMode = m;
+    this.exploring = false;
+    this.applyTouchAction();
+  }
+
+  private applyTouchAction(): void {
+    const c = this.renderer?.domElement;
+    if (c) c.style.touchAction = this.touchMode === 'scroll' ? 'pan-x pan-y pinch-zoom' : 'none';
+  }
+
+  private cardHtml(info: string, actions: CardAction[], close = false): string {
+    const body = info.replace(/<em>[\s\S]*?<\/em>/g, '');
+    const acts = actions.map(a => `<button type="button" data-card-act="${a.id}" class="${a.primary ? 'primary' : ''}" ${a.pressed === undefined ? '' : `aria-pressed="${a.pressed}"`}>${a.label}</button>`).join('');
+    return `${close ? '<button type="button" class="card-x" data-card-act="close" aria-label="Κλείσιμο">✕</button>' : ''}${body}${acts ? `<div class="card-acts">${acts}</div>` : ''}`;
+  }
+
+  private openCard(t: CardTarget): void {
+    this.card = t;
+    if (t.kind === 'point') { this.hotAnchor = null; this.onAnchorHover(null); this.setHoverIndex(t.i); }
+    else { this.setHoverIndex(-1); this.hotAnchor = t.id; this.onAnchorHover(t.id); }
+    this.renderCard();
+  }
+
+  private renderCard(): void {
+    const t = this.card;
+    if (!t) return;
+    let p: [number, number] | null;
+    let html: string;
+    if (t.kind === 'point') {
+      const q = this.points.positionOf(t.i, this.tmp);
+      const v = this.v.set(q[0], q[1], q[2]).project(this.camera);
+      p = [(v.x * 0.5 + 0.5) * this.w, (-v.y * 0.5 + 0.5) * this.h];
+      html = this.cardHtml(this.describePoint(t.i), this.pointActions(t.i), true);
+    } else {
+      p = this.labels.screenOf(t.id, this.camera, this.w, this.h);
+      html = this.cardHtml(this.describeAnchor(t.id), this.anchorActions(t.id), true);
+    }
+    if (p) this.placeTip(html, p[0], p[1], true);
+  }
+
+  closeCard(): void {
+    if (!this.card) return;
+    const wasAnchor = this.card.kind === 'anchor';
+    this.card = null;
+    this.parts.tip.classList.remove('card');
+    this.hideTip();
+    this.setHoverIndex(-1);
+    if (wasAnchor) { this.hotAnchor = null; this.onAnchorHover(null); }
   }
 
   private local(e: PointerEvent): [number, number] {
@@ -225,6 +339,7 @@ export abstract class SphereView {
     const r = this.parts.host.getBoundingClientRect();
     this.w = Math.max(1, Math.round(r.width));
     this.h = Math.max(1, Math.round(r.height));
+    if (this.w >= 40 && this.h >= 40) this.shown = { w: this.w, h: this.h };
     this.camera.aspect = this.w / this.h;
     this.fitDist = this.fitDistance();
     if (!this.userZoomed) this.camera.position.setLength(this.fitDist);
@@ -237,10 +352,10 @@ export abstract class SphereView {
     this.loop.request();
   }
 
-  private fitDistance(): number {
+  private fitDistance(w = this.w, h = this.h): number {
     const v = (FOV * Math.PI) / 180;
-    const hFov = 2 * Math.atan(Math.tan(v / 2) * this.camera.aspect);
-    const margin = this.w < 600 ? 1.12 : 1.22;
+    const hFov = 2 * Math.atan(Math.tan(v / 2) * (w / h));
+    const margin = w < 600 ? 1.12 : 1.22;
     return Math.min(MAX_DIST, margin / Math.sin(Math.min(v, hFov) / 2));
   }
 
@@ -295,6 +410,7 @@ export abstract class SphereView {
 
   protected showTip(html: string, x: number, y: number): void {
     const t = this.parts.tip;
+    t.classList.remove('card');
     t.innerHTML = html;
     t.hidden = false;
     const tw = t.offsetWidth, th = t.offsetHeight;
@@ -304,13 +420,28 @@ export abstract class SphereView {
     t.style.transform = `translate(${Math.max(8, left)}px, ${Math.min(this.h - th - 8, top)}px)`;
   }
 
+  /** card centred above a finger (or a point), so the finger does not cover it; below if there is no room */
+  private placeTip(html: string, x: number, y: number, pinned: boolean): void {
+    const t = this.parts.tip;
+    t.classList.toggle('card', pinned);
+    t.innerHTML = html;
+    t.hidden = false;
+    const tw = t.offsetWidth, th = t.offsetHeight;
+    const gap = pinned ? 18 : 64;
+    let top = y - th - gap;
+    if (top < 8) top = Math.min(this.h - th - 8, y + (pinned ? 18 : 40));
+    const left = Math.min(this.w - tw - 8, Math.max(8, x - tw / 2));
+    t.style.transform = `translate(${Math.round(left)}px, ${Math.round(Math.max(8, top))}px)`;
+  }
+
   private showAnchorTip(id: string | null): void {
+    if (this.card) return;
     if (!id) { this.hideTip(); return; }
     const p = this.labels.screenOf(id, this.camera, this.w, this.h);
     if (p) this.showTip(this.describeAnchor(id), p[0] + 8, p[1]);
   }
 
-  protected hideTip(): void { this.parts.tip.hidden = true; }
+  protected hideTip(): void { this.parts.tip.hidden = true; this.parts.tip.classList.remove('card'); }
 
   private setHoverIndex(i: number): void {
     if (i === this.hoverIndex) return;
@@ -402,41 +533,72 @@ export abstract class SphereView {
   /* ------------------------------------------------------------------ export & stats */
 
   /**
-   * PNG of the current view for the PDF report: cropped to the globe, with the anchor letters
+   * Image of the current view for the PDF report (JPEG on `background`, else a transparent PNG): cropped to the globe, with the anchor letters
    * drawn in (they are HTML on screen, so a plain canvas capture would miss them). Null without WebGL.
    */
-  snapshot(): { dataUrl: string; width: number; height: number } | null {
-    if (!this.renderer || this.lost || this.w < 40 || this.h < 40) return null;
-    this.renderer.render(this.scene, this.camera);
-    const src = this.renderer.domElement, pr = this.renderer.getPixelRatio();
-    const d = this.camera.position.length();
-    const rPx = (1 / Math.sqrt(Math.max(1e-6, d * d - 1))) / Math.tan(((FOV * Math.PI) / 180) / 2) * (this.h / 2);
-    const half = Math.min(Math.max(this.w, this.h) / 2, rPx * 1.06 + 20);
-    const sx = Math.max(0, this.w / 2 - half), sy = Math.max(0, this.h / 2 - half);
-    const sw = Math.min(this.w, this.w / 2 + half) - sx, sh = Math.min(this.h, this.h / 2 + half) - sy;
-    const k = Math.max(pr, Math.min(2.5, 900 / sw));
-    const out = document.createElement('canvas');
-    out.width = Math.round(sw * k); out.height = Math.round(sh * k);
-    const ctx = out.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(src, sx * pr, sy * pr, sw * pr, sh * pr, 0, 0, out.width, out.height);
-    if (this.settings.showLabels) {
-      const css = (key: keyof Palette) => `#${this.palette[key].getHexString()}`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      for (const a of this.labels.projected(this.camera, this.w, this.h).sort((p, q) => p.facing - q.facing)) {
-        const x = (a.x - sx) * k, y = (a.y - sy) * k, r = 13 * k * (a.facing > 0 ? 1 : 0.85);
-        if (x < -r || y < -r || x > out.width + r || y > out.height + r) continue;
-        ctx.globalAlpha = a.facing > 0 ? 1 : 0.3;
-        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = a.state === 'F' ? css('--ink') : css('--panel'); ctx.fill();
-        ctx.lineWidth = 1.5 * k; ctx.strokeStyle = css('--ink'); ctx.stroke();
-        ctx.fillStyle = a.state === 'F' ? css('--panel') : css('--ink');
-        ctx.font = `800 ${Math.round(12.5 * k)}px Commissioner, "Segoe UI", Arial, sans-serif`;
-        ctx.fillText(a.label, x, y + 0.5 * k);
-      }
-      ctx.globalAlpha = 1;
+  snapshot(background?: string): { dataUrl: string; width: number; height: number } | null {
+    if (!this.renderer || this.lost) return null;
+    // hidden (e.g. the plan view is open): draw once at the last visible size, then restore
+    const hidden = this.w < 40 || this.h < 40;
+    const W = hidden ? this.shown.w : this.w, H = hidden ? this.shown.h : this.h;
+    const camPos = this.camera.position.clone();
+    if (hidden) {
+      this.renderer.setSize(W, H, false);
+      this.camera.aspect = W / H;
+      this.camera.updateProjectionMatrix();
+      const fit = this.fitDistance(W, H);
+      this.camera.position.setLength(this.userZoomed ? Math.max(fit * 0.6, camPos.length()) : fit);
+      this.camera.lookAt(0, 0, 0);
+      this.points.uniforms.uRef.value = fit;
+      this.points.step(10, 0); // settle any transition that was running when the view was hidden
+      const [w0, h0] = [this.w, this.h];
+      this.w = W; this.h = H; this.onResize(); // e.g. line widths are in pixels of this size
+      this.w = w0; this.h = h0;
     }
-    return { dataUrl: out.toDataURL('image/png'), width: out.width, height: out.height };
+    try {
+      this.renderer.render(this.scene, this.camera);
+      const src = this.renderer.domElement, pr = this.renderer.getPixelRatio();
+      const d = this.camera.position.length();
+      const rPx = (1 / Math.sqrt(Math.max(1e-6, d * d - 1))) / Math.tan(((FOV * Math.PI) / 180) / 2) * (H / 2);
+      const half = Math.min(Math.max(W, H) / 2, rPx * 1.06 + 20);
+      const sx = Math.max(0, W / 2 - half), sy = Math.max(0, H / 2 - half);
+      const sw = Math.min(W, W / 2 + half) - sx, sh = Math.min(H, H / 2 + half) - sy;
+      const k = Math.max(pr, Math.min(2.5, 900 / sw));
+      const out = document.createElement('canvas');
+      out.width = Math.round(sw * k); out.height = Math.round(sh * k);
+      const ctx = out.getContext('2d');
+      if (!ctx) return null;
+      if (background) { ctx.fillStyle = background; ctx.fillRect(0, 0, out.width, out.height); }
+      ctx.drawImage(src, sx * pr, sy * pr, sw * pr, sh * pr, 0, 0, out.width, out.height);
+      if (this.settings.showLabels) {
+        const css = (key: keyof Palette) => `#${this.palette[key].getHexString()}`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        for (const a of this.labels.projected(this.camera, W, H).sort((p, q) => p.facing - q.facing)) {
+          const x = (a.x - sx) * k, y = (a.y - sy) * k, r = 13 * k * (a.facing > 0 ? 1 : 0.85);
+          if (x < -r || y < -r || x > out.width + r || y > out.height + r) continue;
+          ctx.globalAlpha = a.facing > 0 ? 1 : 0.3;
+          ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fillStyle = a.state === 'F' ? css('--ink') : css('--panel'); ctx.fill();
+          ctx.lineWidth = 1.5 * k; ctx.strokeStyle = css('--ink'); ctx.stroke();
+          ctx.fillStyle = a.state === 'F' ? css('--panel') : css('--ink');
+          ctx.font = `800 ${Math.round(12.5 * k)}px Commissioner, "Segoe UI", Arial, sans-serif`;
+          ctx.fillText(a.label, x, y + 0.5 * k);
+        }
+        ctx.globalAlpha = 1;
+      }
+      // on a solid background a JPEG is a fraction of the size of a PNG with transparency
+      return { dataUrl: background ? out.toDataURL('image/jpeg', 0.9) : out.toDataURL('image/png'), width: out.width, height: out.height };
+    } finally {
+      if (hidden) {
+        this.renderer.setSize(this.w, this.h, false);
+        this.camera.aspect = this.w / this.h;
+        this.camera.updateProjectionMatrix();
+        this.camera.position.copy(camPos);
+        this.camera.lookAt(0, 0, 0);
+        this.points.uniforms.uRef.value = this.fitDist;
+        this.onResize();
+      }
+    }
   }
 
   stats(): RenderStats {

@@ -4,7 +4,7 @@
  */
 import { CATEGORIES, type FlowId } from '../data/catalog';
 import { DIRECTIONS, FLOW_ORDER, SHAPES, SHAPE_ORDER, type DirId, type ShapeId } from '../data/rules';
-import { countWith, flowStats, type Combo, type FlowState } from '../domain/combos';
+import { countWith, flowStats, type Combo, type Filters, type FlowState } from '../domain/combos';
 import type { AppState } from '../state/app-state';
 import type { Store } from '../state/store';
 import { esc, on, render } from './dom';
@@ -12,6 +12,10 @@ import { esc, on, render } from './dom';
 const STATE_LABEL: Record<FlowState, [string, string]> = { F: ['Πλήρης', 'πλήρης'], H: ['Μισή', 'μισή'], X: ['Όχι', 'χωρίς'] };
 
 export class FiltersPanel {
+  /** overall ECTS spread of the 23 specialisation courses, set by the app */
+  spread: [number, number] = [0, 0];
+  private pendingEcts: [number, number] | null = null;
+
   constructor(private root: HTMLElement, private store: Store<AppState>, actions: { setFlow(f: FlowId, s: FlowState | null): void }) {
     on(root, 'click', '[data-dir]', el => {
       const id = el.dataset.dir as DirId;
@@ -26,7 +30,21 @@ export class FiltersPanel {
       const f = el.dataset.flow as FlowId, st = el.dataset.s as FlowState;
       actions.setFlow(f, store.state.filters.flows[f] === st ? null : st);
     });
-    on(root, 'click', '[data-action="clear"]', () => store.update(['filters'], s => { s.filters = { dir: null, shape: null, flows: {} }; }));
+    on(root, 'click', '[data-action="clear"]', () => store.update(['filters'], s => { s.filters = { dir: null, shape: null, flows: {}, ects: null }; }));
+    on(root, 'input', 'input[data-ects]', el => {
+      const [lo, hi] = this.spread;
+      const inputs = root.querySelectorAll<HTMLInputElement>('input[data-ects]');
+      let a = Number(inputs[0].value), b = Number(inputs[1].value);
+      if (a > b) { if (el.dataset.ects === 'lo') b = a; else a = b; inputs[0].value = String(a); inputs[1].value = String(b); }
+      const out = root.querySelector('#ectsOut');
+      if (out) out.textContent = `${a}–${b}`;
+      this.pendingEcts = a <= lo && b >= hi ? null : [a, b];
+    });
+    on(root, 'change', 'input[data-ects]', () => {
+      const v = this.pendingEcts;
+      store.update(['filters'], s => { s.filters.ects = v; });
+    });
+    on(root, 'click', '[data-action="ects-clear"]', () => store.update(['filters'], s => { s.filters.ects = null; }));
     root.addEventListener('pointerover', ev => {
       const t = ev.target as Element;
       const row = t.closest<HTMLElement>('[data-frow]'), dir = t.closest<HTMLElement>('.dir');
@@ -43,7 +61,7 @@ export class FiltersPanel {
 
   render(rem: readonly Combo[]): void {
     const F = this.store.state.filters;
-    const anyFilter = Boolean(F.dir || F.shape || Object.keys(F.flows).length);
+    const anyFilter = Boolean(F.dir || F.shape || Object.keys(F.flows).length || F.ects);
 
     const dirs = DIRECTIONS.map(d => {
       const on = F.dir === d.id, n = countWith(F, { dir: d.id });
@@ -85,6 +103,21 @@ export class FiltersPanel {
       <div class="pane-head"><h2>Φίλτρα</h2><button type="button" class="linkbtn" data-action="clear" data-focus-key="clear" ${anyFilter ? '' : 'disabled'}>Καθαρισμός</button></div>
       <section class="group"><h3 class="label">Κατεύθυνση</h3><div class="dirs">${dirs}</div></section>
       <section class="group"><h3 class="label">Σχήμα <small>23 = ροές + ελεύθερα</small></h3><div class="shapes">${shapes}</div></section>
-      <section class="group"><h3 class="label">Ροές <small>πλήρης 7 · μισή 4</small></h3><div class="flows">${flows}${extra}</div></section>`);
+      <section class="group"><h3 class="label">Ροές <small>πλήρης 7 · μισή 4</small></h3><div class="flows">${flows}${extra}</div></section>
+      ${this.ectsSection(F)}`);
+  }
+
+  private ectsSection(F: Filters): string {
+    const [lo, hi] = this.spread;
+    if (!(hi > lo)) return '';
+    const [a, b] = F.ects ?? [lo, hi];
+    this.pendingEcts = F.ects;
+    return `<section class="group ects-filter"><h3 class="label">ECTS εμβάθυνσης <small>23 μαθήματα</small></h3>
+      <p class="ef-help">Κρατά τους συνδυασμούς που μπορούν να βγάλουν ECTS μέσα στο εύρος <output id="ectsOut">${a}–${b}</output>.
+        ${F.ects ? '<button type="button" class="linkbtn" data-action="ects-clear" data-focus-key="ects-clear">Όλα</button>' : ''}</p>
+      <div class="ef-rows">
+        <label>Από <input type="range" data-ects="lo" data-focus-key="ects-lo" min="${lo}" max="${hi}" step="2" value="${a}" aria-label="ECTS από"></label>
+        <label>Έως <input type="range" data-ects="hi" data-focus-key="ects-hi" min="${lo}" max="${hi}" step="2" value="${b}" aria-label="ECTS έως"></label>
+      </div></section>`;
   }
 }

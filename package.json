@@ -17,6 +17,7 @@
     "@expo-google-fonts/commissioner": "0.4.1",
     "jspdf": "3.0.4",
     "jspdf-autotable": "5.0.8",
+    "qrcode-generator": "1.4.4",
     "three": "0.160.0"
   },
   "devDependencies": {

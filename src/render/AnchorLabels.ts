@@ -13,15 +13,17 @@ export class AnchorLabels {
   private n = new Vector3();
   private toCam = new Vector3();
 
-  constructor(private layer: HTMLElement, anchors: readonly AnchorDef[], onClick: (id: string) => void, onHover: (id: string | null) => void) {
+  constructor(private layer: HTMLElement, anchors: readonly AnchorDef[], onClick: (id: string, pointerType: string) => void, onHover: (id: string | null) => void) {
     for (const a of anchors) {
       const b = document.createElement('button');
+      let lastType = '';
       b.type = 'button';
       b.className = 'anchor';
       b.textContent = a.label;
       b.dataset.anchor = a.id;
       b.setAttribute('aria-label', a.title);
-      b.addEventListener('click', () => onClick(a.id));
+      b.addEventListener('pointerdown', e => { lastType = e.pointerType; });
+      b.addEventListener('click', () => { onClick(a.id, lastType); lastType = ''; });
       b.addEventListener('pointerenter', () => onHover(a.id));
       b.addEventListener('pointerleave', () => onHover(null));
       b.addEventListener('focus', () => onHover(a.id));

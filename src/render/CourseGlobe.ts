@@ -10,13 +10,15 @@ import { DIR } from '../data/rules';
 import type { Combo } from '../domain/combos';
 import { CAT_ANCHORS, COURSE_CATS, COURSE_IDS, IN_PLAN, layoutCourses, type CourseState } from '../domain/courses';
 import type { Settings } from '../state/settings';
-import { SphereView, type SphereParts } from './SphereView';
+import { SphereView, type CardAction, type CardTarget, type SphereParts } from './SphereView';
 
 export interface CourseGlobeCallbacks {
   onPick(id: string): void;
   describe(id: string): string;
   describeAnchor(cat: CatId): string;
   onAnchorClick(cat: CatId): void;
+  pointActions(id: string): CardAction[];
+  onPointAction(id: string, act: string): boolean;
 }
 
 const ACTIVE: Record<CourseState, number> = { req: 1, on: 1, free: 1, core: 1, grp: 0.85, opt: 0.62, pool: 0.3, idle: 0.55, na: 0 };
@@ -38,6 +40,10 @@ export class CourseGlobe extends SphereView {
   protected describeAnchor(id: string): string { return this.cb.describeAnchor(id as CatId); }
   protected onPointPick(i: number): void { this.cb.onPick(COURSE_IDS[i]); }
   protected onAnchorClick(id: string): void { this.cb.onAnchorClick(id as CatId); }
+  protected pointActions(i: number): CardAction[] { return this.cb.pointActions(COURSE_IDS[i]); }
+  protected onCardAction(t: CardTarget, act: string): boolean {
+    return t.kind === 'point' ? this.cb.onPointAction(COURSE_IDS[t.i], act) : false;
+  }
   protected onAnchorHover(): void { this.refreshEmphasis(); }
   protected onHoverChange(): void { this.refreshRings(); }
 

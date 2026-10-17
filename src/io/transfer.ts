@@ -4,6 +4,7 @@
  * - ECTS: a CSV template with every course code, to be filled in and loaded back.
  */
 import { CATEGORIES, COURSES, GUIDE_YEAR } from '../data/catalog';
+import { confidenceOf, ectsOf, ectsOrigin } from '../data/ects';
 import { COURSE_CATS, COURSE_IDS } from '../domain/courses';
 import { sanitizeEcts, sanitizeState, savedState, type AppState, type SavedState } from '../state/app-state';
 import { sanitizeSettings, type Settings } from '../state/settings';
@@ -87,14 +88,17 @@ export function parseImport(text: string, filename: string): ImportResult {
   throw new Error('Το αρχείο δεν είναι εξαγωγή του Χάρτη Ροών ούτε λίστα ECTS.');
 }
 
-/** CSV template (UTF-8 with BOM, `;` separated, opens cleanly in Excel/LibreOffice with Greek locale). */
+const SOURCE_TEXT = { confirmed: 'πρόγραμμα 2020-21 (= 2018-19)', single: 'πρόγραμμα 2020-21', moved: 'πρόγραμμα 2020-21, άλλαξε εξάμηνο', unknown: 'χωρίς τιμή' } as const;
+
+/** CSV with the ECTS in effect (UTF-8 with BOM, `;` separated, opens cleanly in Excel/LibreOffice with Greek locale). */
 export function ectsTemplateCsv(current: Readonly<Record<string, number>>): string {
-  const rows = ['κωδικός;μάθημα;εξάμηνο;κατηγορία;ects'];
+  const rows = ['κωδικός;μάθημα;εξάμηνο;κατηγορία;πηγή;ects'];
   for (const cat of COURSE_CATS) {
     for (const id of COURSE_IDS.filter(x => COURSES[x].cat === cat)) {
       const c = COURSES[id];
-      const v = current[id];
-      rows.push([c.code, `"${c.name.replace(/"/g, '""')}"`, c.sem, `"${cat} ${CATEGORIES[cat].name}"`, v === undefined ? '' : String(v).replace('.', ',')].join(';'));
+      const v = ectsOf(id, current);
+      const src = ectsOrigin(id, current) === 'user' ? 'δική σου τιμή' : SOURCE_TEXT[confidenceOf(id)];
+      rows.push([c.code, `"${c.name.replace(/"/g, '""')}"`, c.sem, `"${cat} ${CATEGORIES[cat].name}"`, `"${src}"`, v === null ? '' : String(v).replace('.', ',')].join(';'));
     }
   }
   return '﻿' + rows.join('\r\n') + '\r\n';

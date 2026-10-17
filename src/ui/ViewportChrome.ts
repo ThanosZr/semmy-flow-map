@@ -2,6 +2,7 @@
  * HTML drawn over the two canvases (legends, title blocks, view tools, performance readouts)
  * and the status bar at the bottom of the window.
  */
+import { GUIDE_YEAR } from '../data/catalog';
 import { fmtEcts } from '../data/ects';
 import { DIR, DIRECTIONS, SHAPES, SHAPE_ORDER, type DirId } from '../data/rules';
 import { COMBOS, type Combo } from '../domain/combos';
@@ -51,6 +52,7 @@ export class ViewportChrome {
     private store: Store<AppState>,
     private settings: Store<Settings>,
     actions: { resetView(which: 1 | 2): void; toggleRotate(): void; openSettings(): void },
+    private ectsSpread: () => [number, number],
   ) {
     on(els.legend, 'click', '[data-dir]', el => {
       const id = el.dataset.dir as DirId;
@@ -74,7 +76,11 @@ export class ViewportChrome {
   render(rem: readonly Combo[]): void {
     const s = this.store.state, st = this.settings.state;
     const title = '<p class="lg-title">Συνδυασμοί ροών</p>';
-    if (st.colorMode === 'shape') {
+    if (st.colorMode === 'ects') {
+      const [lo, hi] = this.ectsSpread();
+      this.els.legend.innerHTML = `<p class="lg-title">ECTS εμβάθυνσης · μέσο εύρους</p>
+        <div class="lg-scale" aria-hidden="true"></div><div class="lg-scale-l"><span>≤${fmtEcts(lo)}</span><span>${fmtEcts((lo + hi) / 2)}</span><span>≥${fmtEcts(hi)}</span></div>`;
+    } else if (st.colorMode === 'shape') {
       this.els.legend.innerHTML = title + SHAPE_ORDER.map(k => {
         const n = rem.filter(c => c.shape === k).length;
         return `<span class="lg-item" style="--c:var(${SHAPES[k].token})"><i></i>${esc(SHAPES[k].name)} <b>${n}</b></span>`;
@@ -89,6 +95,7 @@ export class ViewportChrome {
     const parts: string[] = [];
     if (F.shape) parts.push(SHAPES[F.shape].name);
     for (const [f, v] of Object.entries(F.flows)) if (v) parts.push(({ F: '', H: '½', X: '✕' } as const)[v] + f);
+    if (F.ects) parts.push(`ECTS ${F.ects[0]}–${F.ects[1]}`);
     this.els.tblock.innerHTML = `
       <span>Συνδυασμοί</span><output><b>${rem.length}</b> / ${COMBOS.length}</output>
       <span class="opt">Κατεύθυνση</span><output class="opt">${esc(F.dir ? DIR[F.dir].name : 'όλες')}</output>
@@ -120,7 +127,7 @@ export class ViewportChrome {
       ${main ? `<span class="sb-item hide-s">ανάλυση ${fmtRatio(main.pixelRatio)} · ${main.buffer[0]}×${main.buffer[1]} px</span>` : ''}
       <span class="sb-item hide-m">${st.msaa ? 'MSAA' : 'χωρίς MSAA'} · όριο ${st.fpsCap ? st.fpsCap + ' fps' : 'κανένα'}</span>
       <span class="sb-spacer"></span>
-      <span class="sb-item hide-m">Οδηγός Σπουδών ΣΗΜΜΥ 2024-25 · ανεπίσημο εργαλείο</span>`;
+      <span class="sb-item hide-m">Οδηγός Σπουδών ΣΗΜΜΥ ${GUIDE_YEAR} · ECTS: πρόγραμμα 2020-21 · ανεπίσημο εργαλείο</span>`;
     for (const [el, r] of [[this.els.stats, r1], [this.courseEls.stats, r2]] as const) {
       el.hidden = !st.showStats || !r;
       if (st.showStats && r) el.innerHTML = statsHtml(r);

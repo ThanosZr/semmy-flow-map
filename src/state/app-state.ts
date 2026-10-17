@@ -15,7 +15,7 @@ export interface AppState {
   /** true while the shipped example plan is untouched */
   example: boolean;
   view: View;
-  /** ECTS per course id, loaded by the user from a file (the guide gives none per course) */
+  /** ECTS per course id loaded by the user from a file; they override the shipped values */
   ects: Record<string, number>;
   /** transient hover links between panels and the globes (not persisted) */
   hover: { key: string | null; flow: string | null; dir: string | null };
@@ -62,11 +62,14 @@ export function sanitizeState(raw: unknown): AppState {
       if ((FLOW_ORDER as readonly string[]).includes(k) && (v === 'F' || v === 'H' || v === 'X')) flows[k as keyof Filters['flows']] = v as FlowState;
     }
   }
+  const range = Array.isArray(f.ects) && f.ects.length === 2 && f.ects.every(v => typeof v === 'number' && v >= 0 && v <= 400) && f.ects[0] <= f.ects[1]
+    ? [f.ects[0], f.ects[1]] as [number, number] : null;
   const filters: Filters = {
     ...emptyFilters(),
     dir: typeof f.dir === 'string' && f.dir in DIR ? (f.dir as DirId) : null,
     shape: typeof f.shape === 'string' && f.shape in SHAPES ? (f.shape as ShapeId) : null,
     flows,
+    ects: range,
   };
   const picks: Record<string, string[]> = {};
   if (isObj(raw.picks)) {

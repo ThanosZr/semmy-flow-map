@@ -114,7 +114,18 @@
   .plan-title { font-size: 24px; }
 }
 
-.ects-total { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.ects-total b { font: 700 24px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; }
-.ects-total span { font-size: 12px; color: var(--ink-2); }
-.ects .btnrow { margin-top: 10px; }
+.ects-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ects-grid div { border: 1px solid var(--rule); border-radius: 3px; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ects-grid span { font-size: 11px; color: var(--ink-2); line-height: 1.25; }
+.ects-grid b { font: 700 20px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.ects-grid small, .ects-dip small { font: 500 11px var(--font-mono); color: var(--ink-3); }
+.ects-dip { margin: 8px 0 4px; font-size: 13px; line-height: 1.5; }
+.ects-dip b { font: 700 16px var(--font-mono); }
+.ects-dip .over, .ects-dip .under, .ects-dip .eq { font: 600 11.5px var(--font-mono); padding: 1px 6px; border-radius: 2px; border: 1px solid currentColor; white-space: nowrap; }
+.ects-dip .over { color: var(--dir-en); }
+.ects-dip .under { color: var(--bad); }
+.ects-dip .eq { color: var(--ok); }
+.ects .hnote a { color: var(--accent); }
+.ects-more { margin-top: 8px; }
+.ects-more summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.ects .btnrow { margin-top: 8px; }

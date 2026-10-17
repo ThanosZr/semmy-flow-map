@@ -2,14 +2,14 @@
  * Sphere 1: every allowed flow combination. Flows are anchors; links connect the selected
  * (and hovered) combination to its flows.
  */
-import type { Color } from 'three';
+import { Color } from 'three';
 import { CATEGORIES, type FlowId } from '../data/catalog';
 import { DIR, FLOW_ORDER, SHAPES } from '../data/rules';
 import { COMBOS, type Combo } from '../domain/combos';
 import { ANCHORS, layoutSphere, type Vec3 } from '../domain/layout';
 import type { Settings } from '../state/settings';
 import { LinksLayer, type LinkSpec } from './layers/LinksLayer';
-import { SphereView, type SphereParts } from './SphereView';
+import { SphereView, type CardAction, type CardTarget, type SphereParts } from './SphereView';
 import type { Palette } from './theme';
 
 export interface ComboGlobeCallbacks {
@@ -18,6 +18,19 @@ export interface ComboGlobeCallbacks {
   onAnchorClick(f: FlowId): void;
   describe(key: string): string;
   describeAnchor(f: FlowId): string;
+  pointActions(key: string): CardAction[];
+  onPointAction(key: string, act: string): boolean;
+  anchorActions(f: FlowId): CardAction[];
+  onAnchorAction(f: FlowId, act: string): boolean;
+  /** ECTS bounds of the 23 specialisation courses, and the overall spread (for the ECTS colour mode) */
+  ects(key: string): { min: number; max: number } | null;
+  ectsSpread(): [number, number];
+}
+
+/** three-stop scale for the ECTS colour mode: low → mid → high */
+export function ectsColor(t: number, lo: Color, mid: Color, hi: Color, out = new Color()): Color {
+  const u = Math.max(0, Math.min(1, t));
+  return u < 0.5 ? out.copy(lo).lerp(mid, u * 2) : out.copy(mid).lerp(hi, (u - 0.5) * 2);
 }
 
 const ARC_SEGMENTS = { low: 24, medium: 48, high: 96 } as const;
@@ -46,6 +59,11 @@ export class ComboGlobe extends SphereView {
 
   protected describePoint(i: number): string { return this.cb.describe(COMBOS[i].key); }
   protected describeAnchor(id: string): string { return this.cb.describeAnchor(id as FlowId); }
+  protected pointActions(i: number): CardAction[] { return this.cb.pointActions(COMBOS[i].key); }
+  protected anchorActions(id: string): CardAction[] { return this.cb.anchorActions(id as FlowId); }
+  protected onCardAction(t: CardTarget, act: string): boolean {
+    return t.kind === 'point' ? this.cb.onPointAction(COMBOS[t.i].key, act) : this.cb.onAnchorAction(t.id as FlowId, act);
+  }
   protected onPointPick(i: number): void { this.cb.onPick(COMBOS[i].key); }
   protected onAnchorClick(id: string): void { this.cb.onAnchorClick(id as FlowId); }
   protected onAnchorHover(): void { this.refreshEmphasis(); }
@@ -80,9 +98,20 @@ export class ComboGlobe extends SphereView {
   /* ------------------------------------------------------------------ state from the app */
 
   colorFor(c: Combo): Color {
+    if (this.settings.colorMode === 'ects') {
+      const e = this.cb.ects(c.key), [lo, hi] = this.cb.ectsSpread();
+      if (e && hi > lo) {
+        const p = this.palette;
+        return ectsColor(((e.min + e.max) / 2 - lo) / (hi - lo), p['--shape-f3'], p['--dir-en'], p['--dir-es']);
+      }
+      return this.palette['--ink-3'];
+    }
     const tok = this.settings.colorMode === 'shape' ? SHAPES[c.shape].token : DIR[c.dir].token;
     return this.palette[tok as keyof Palette];
   }
+
+  /** colours depend on outside data (ECTS mode) */
+  refreshColors(): void { this.applyPalette(); }
 
   setActive(keys: ReadonlySet<string>): void {
     const t = new Float32Array(COMBOS.length);

@@ -107,3 +107,10 @@
 @media (max-width: 680px) {
   .pane-left, .pane-right { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 }
+
+/* ECTS filter */
+.ects-filter .ef-help { font-size: 12px; color: var(--ink-2); line-height: 1.45; margin: -2px 0 8px; }
+.ects-filter output { font: 600 12px var(--font-mono); color: var(--ink); }
+.ef-rows { display: grid; gap: 4px; }
+.ef-rows label { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.ef-rows input { width: 100%; accent-color: var(--ink); }
