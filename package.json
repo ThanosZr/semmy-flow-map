@@ -1,7 +1,7 @@
 {
   "name": "semmy-flow-map",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Χάρτης Ροών ΣΗΜΜΥ: όλοι οι επιτρεπτοί συνδυασμοί ροών πάνω σε σφαίρα Three.js, με πλάνο 23 μαθημάτων.",
   "type": "module",
   "scripts": {

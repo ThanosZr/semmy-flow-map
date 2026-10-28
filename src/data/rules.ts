@@ -1,7 +1,7 @@
 /**
- * Rules from the study guide, §7.4–7.5 and ch. 9.
+ * Rules from the study guide 2025-26, §7.4–7.5 (p. 40–41) and ch. 9.
  * A full flow is 7 courses (4 mandatory), a half flow is 4 (3 mandatory).
- * The 23 specialisation courses are flows + free courses.
+ * The 23 specialisation courses are flows + free courses (at most 5 free, rule i).
  */
 import type { FlowId } from './catalog';
 
@@ -23,38 +23,40 @@ export interface Direction {
   long: string;
   /** CSS custom property holding the direction colour */
   token: string;
+  /** the direction's own flow pairs as the guide's table allows them (full + full, full + ½) */
   tag: string;
   /** flows listed first when a combination is printed */
   lead: FlowId[];
   /** rule (α): every pair here as full flows + at least ½ other flow */
   a: FlowId[][];
-  /** rule (β) and (γ): one full, one half, plus one of `third` as full */
+  /** rule (β) and (γ): one full, one half, plus one of `third` as full; optionally ½ of any other flow on top */
   b: { F: FlowId; H: FlowId; third: FlowId[] };
   c: { F: FlowId; H: FlowId; third: FlowId[] };
+  /** the guide's wording, §7.5 vii */
   ruleText: Record<RuleId, string>;
 }
 
 export const DIRECTIONS: readonly Direction[] = [
   {
-    id: 'ES', name: 'Ηλεκτρονική & Συστήματα', long: 'Ηλεκτρονικής και Συστημάτων', token: '--dir-es', tag: 'Η + Υ ή Σ',
+    id: 'ES', name: 'Ηλεκτρονική & Συστήματα', long: 'Ηλεκτρονικής και Συστημάτων', token: '--dir-es', tag: 'Η+Υ · Η+Σ · Η+½Σ · ½Η+Σ',
     lead: ['Η', 'Σ', 'Υ'],
     a: [['Η', 'Υ'], ['Η', 'Σ']], b: { F: 'Η', H: 'Σ', third: ['Υ', 'Τ', 'Ζ'] }, c: { F: 'Σ', H: 'Η', third: ['Λ', 'Δ', 'Ε'] },
     ruleText: { 'α': '{Η} + {Υ ή Σ} + τουλάχιστον ½ άλλη ροή', 'β': '{Η, ½Σ} + {Υ ή Τ ή Ζ}', 'γ': '{½Η, Σ} + {Λ ή Δ ή Ε}' },
   },
   {
-    id: 'PL', name: 'Πληροφορική', long: 'Πληροφορικής', token: '--dir-pl', tag: 'Υ + Λ',
+    id: 'PL', name: 'Πληροφορική', long: 'Πληροφορικής', token: '--dir-pl', tag: 'Υ+Λ · Υ+½Λ · ½Υ+Λ',
     lead: ['Υ', 'Λ'],
     a: [['Υ', 'Λ']], b: { F: 'Υ', H: 'Λ', third: ['Δ', 'Σ'] }, c: { F: 'Λ', H: 'Υ', third: ['Δ', 'Σ'] },
     ruleText: { 'α': '{Υ, Λ} + τουλάχιστον ½ άλλη ροή', 'β': '{Υ, ½Λ} + {Δ ή Σ}', 'γ': '{½Υ, Λ} + {Δ ή Σ}' },
   },
   {
-    id: 'TL', name: 'Επικοινωνίες', long: 'Επικοινωνιών', token: '--dir-tl', tag: 'Τ + Δ',
+    id: 'TL', name: 'Επικοινωνίες', long: 'Επικοινωνιών', token: '--dir-tl', tag: 'Τ+Δ · Τ+½Δ · ½Τ+Δ',
     lead: ['Τ', 'Δ'],
     a: [['Τ', 'Δ']], b: { F: 'Τ', H: 'Δ', third: ['Η', 'Σ'] }, c: { F: 'Δ', H: 'Τ', third: ['Υ', 'Λ', 'Σ'] },
     ruleText: { 'α': '{Τ, Δ} + τουλάχιστον ½ άλλη ροή', 'β': '{Τ, ½Δ} + {Η ή Σ}', 'γ': '{½Τ, Δ} + {Υ ή Λ ή Σ}' },
   },
   {
-    id: 'EN', name: 'Ενέργεια', long: 'Ενέργειας', token: '--dir-en', tag: 'Ε + Ζ',
+    id: 'EN', name: 'Ενέργεια', long: 'Ενέργειας', token: '--dir-en', tag: 'Ε+Ζ · Ε+½Ζ · ½Ε+Ζ',
     lead: ['Ε', 'Ζ'],
     a: [['Ε', 'Ζ']], b: { F: 'Ε', H: 'Ζ', third: ['Τ', 'Δ', 'Σ'] }, c: { F: 'Ζ', H: 'Ε', third: ['Υ', 'Η', 'Σ'] },
     ruleText: { 'α': '{Ε, Ζ} + τουλάχιστον ½ άλλη ροή', 'β': '{Ε, ½Ζ} + {Τ ή Δ ή Σ}', 'γ': '{½Ε, Ζ} + {Υ ή Η ή Σ}' },
@@ -62,6 +64,16 @@ export const DIRECTIONS: readonly Direction[] = [
 ];
 export const DIR: Readonly<Record<DirId, Direction>> =
   Object.fromEntries(DIRECTIONS.map(d => [d.id, d])) as Record<DirId, Direction>;
+
+/**
+ * The rule as shown for one combination. Under (β)/(γ) a 2 + ½ + ½ combination carries one extra half flow
+ * that the guide's wording leaves out: it takes the place of 4 of the 5 free courses (table, p. 41: every other
+ * flow is "δεν επιτρέπεται ως πλήρης" in those rows, so allowed as half).
+ */
+export function ruleLine(dir: DirId, r: RuleId, shape: ShapeId): string {
+  const t = DIR[dir].ruleText[r];
+  return r !== 'α' && shape === 'F2H2' ? `${t} + ½ άλλη ροή (στη θέση 4 από τα 5 ελεύθερα)` : t;
+}
 
 export interface Shape { id: ShapeId; name: string; sub: string; free: number; token: string }
 export const SHAPES: Readonly<Record<ShapeId, Shape>> = {

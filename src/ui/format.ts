@@ -1,4 +1,4 @@
-import { DIR, SHAPES } from '../data/rules';
+import { DIR, SHAPES, ruleLine } from '../data/rules';
 import type { Combo } from '../domain/combos';
 import type { ColorMode } from '../state/settings';
 import { esc, plural } from './dom';
@@ -32,7 +32,7 @@ export const freeText = (n: number) => plural(n, 'ελεύθερο', 'ελεύθ
 export function comboTip(c: Combo, active: boolean): string {
   const e = ectsInfo.of(c.key);
   return `<b>${esc(c.label)}</b>${esc(DIR[c.dir].name)} · ${esc(SHAPES[c.shape].name)} · ${esc(freeText(c.free))}`
-    + `<span class="tip-rule">κανόνας ${c.rules.map(r => `${r}: ${esc(DIR[c.dir].ruleText[r])}`).join(' · ')}</span>`
+    + `<span class="tip-rule">κανόνας ${c.rules.map(r => `${r}: ${esc(ruleLine(c.dir, r, c.shape))}`).join(' · ')}</span>`
     + (e ? `<span class="tip-rule">ECTS εμβάθυνσης: ${e.min}–${e.max}</span>` : '')
     + `<em>${active ? 'Κλικ: επιλογή και πλάνο μαθημάτων' : 'Εκτός των τρεχόντων φίλτρων'}</em>`;
 }

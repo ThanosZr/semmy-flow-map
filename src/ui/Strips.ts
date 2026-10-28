@@ -4,7 +4,7 @@
  */
 import { CATEGORIES } from '../data/catalog';
 import { fmtEcts } from '../data/ects';
-import { DIR, SHAPES } from '../data/rules';
+import { DIR, SHAPES, ruleLine } from '../data/rules';
 import type { Combo } from '../domain/combos';
 import type { ColorMode } from '../state/settings';
 import { esc } from './dom';
@@ -34,7 +34,7 @@ export function selStrip(d: SelStripData): string {
   return `<div class="strip-head" style="--c:${colorVar(c, d.mode)}"><i aria-hidden="true"></i><b>${esc(c.label)}</b>
       ${d.preview ? '<span class="chip">Προεπισκόπηση</span>' : `<span class="chip ${d.valid ? 'ok' : 'bad'}">${d.valid ? 'Έγκυρο' : `${d.total}/23`}</span>`}</div>
     <p class="strip-dir">${esc(dir.name)} · ${esc(SHAPES[c.shape].name)} + ${esc(freeText(c.free))}</p>
-    <p class="strip-rule">${c.rules.map(r => `Κανόνας <b>${r}</b>: ${esc(dir.ruleText[r])}`).join('<br>')}</p>
+    <p class="strip-rule">${c.rules.map(r => `Κανόνας <b>${r}</b>: ${esc(ruleLine(c.dir, r, c.shape))}`).join('<br>')}</p>
     <p class="strip-flows">${esc(flows)}</p>
     <div class="strip-meta">${ects}${planE}</div>
     <div class="strip-btns">

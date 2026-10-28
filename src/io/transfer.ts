@@ -88,7 +88,7 @@ export function parseImport(text: string, filename: string): ImportResult {
   throw new Error('Το αρχείο δεν είναι εξαγωγή του Χάρτη Ροών ούτε λίστα ECTS.');
 }
 
-const SOURCE_TEXT = { confirmed: 'πρόγραμμα 2020-21 (= 2018-19)', single: 'πρόγραμμα 2020-21', moved: 'πρόγραμμα 2020-21, άλλαξε εξάμηνο', unknown: 'χωρίς τιμή' } as const;
+const SOURCE_TEXT = { confirmed: 'οδηγός 2025-26 (= πρόγραμμα 2020-21)', guide: 'οδηγός 2025-26', legacy: 'πρόγραμμα 2020-21 (όχι στον οδηγό)', unknown: 'χωρίς τιμή' } as const;
 
 /** CSV with the ECTS in effect (UTF-8 with BOM, `;` separated, opens cleanly in Excel/LibreOffice with Greek locale). */
 export function ectsTemplateCsv(current: Readonly<Record<string, number>>): string {

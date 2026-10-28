@@ -9,7 +9,7 @@ import { COURSES, GUIDE_YEAR } from '../data/catalog';
 import {
   DIPLOMA_ECTS, ECTS_SEMESTERS_1_5, ECTS_SOURCES, ECTS_THESIS, confidenceOf, ectsOf, ectsOrigin, fmtEcts, sumEcts,
 } from '../data/ects';
-import { DIR, ELEC_DRAWING, SHAPES, type CoreChoice } from '../data/rules';
+import { DIR, ELEC_DRAWING, SHAPES, ruleLine, type CoreChoice } from '../data/rules';
 import type { Combo } from '../domain/combos';
 import { semesterLoad, type Allocation, type Check } from '../domain/plan';
 import type { PrintColors, RGB } from '../ui/applyTheme';
@@ -52,7 +52,7 @@ function rowsOf(input: ReportInput): Row[] {
   const rows: Row[] = [];
   const push = (id: string, group: string, role: string) => {
     const co = COURSES[id], e = ectsOf(id, ects);
-    const mark = e !== null && ectsOrigin(id, ects) === 'builtin' && confidenceOf(id) === 'moved' ? '~' : '';
+    const mark = e !== null && ectsOrigin(id, ects) === 'builtin' && confidenceOf(id) === 'legacy' ? '~' : '';
     rows.push({ id, sem: co.sem, code: co.code, name: co.name, group, role, ects: e === null ? '—' : mark + fmtEcts(e), sort: `${co.sem}-${group}-${co.code}` });
   };
   for (const f of c.order) {
@@ -104,7 +104,7 @@ export async function buildReport(input: ReportInput): Promise<Blob> {
   y += 6;
   doc.setFont('Commissioner', 'normal'); doc.setFontSize(10.5); doc.setTextColor(...INK2);
   doc.text(`Κατεύθυνση ${d.long} · ${SHAPES[c.shape].name} + ${c.free} ${c.free === 1 ? 'ελεύθερο' : 'ελεύθερα'}`, M, y); y += 5;
-  doc.text(doc.splitTextToSize(c.rules.map(r => `Κανόνας ${r}: ${d.ruleText[r]}`).join('   '), W - 2 * M), M, y); y += 5;
+  doc.text(doc.splitTextToSize(c.rules.map(r => `Κανόνας ${r}: ${ruleLine(c.dir, r, c.shape)}`).join('   '), W - 2 * M), M, y); y += 5;
   if (input.range) { doc.text(`ECTS των 23 μαθημάτων εμβάθυνσης για αυτόν τον συνδυασμό: ${input.range.min}–${input.range.max}, ανάλογα με τις επιλογές.`, M, y); y += 5; }
   y += 2;
 
@@ -193,13 +193,13 @@ export async function buildReport(input: ReportInput): Promise<Blob> {
 
   y = Math.max(tableEnd, input.link && doc.getNumberOfPages() === pagesBefore ? qrTop + 44 : 0) + 6;
 
-  const moved = ids.filter(id => ectsOrigin(id, input.ects) === 'builtin' && confidenceOf(id) === 'moved').length;
+  const legacy = ids.filter(id => ectsOrigin(id, input.ects) === 'builtin' && confidenceOf(id) === 'legacy').length;
   const user = ids.filter(id => ectsOrigin(id, input.ects) === 'user').length;
   const notes = [
     `Δίπλωμα: ${DIPLOMA_ECTS} ECTS σε 10 εξάμηνα (Οδηγός Σπουδών §1.4). Τα 1ο–5ο εξάμηνο μετρούν ${ECTS_SEMESTERS_1_5} (30 το καθένα) και η διπλωματική ${ECTS_THESIS}.`,
-    `ECTS ανά μάθημα: ${ECTS_SOURCES[0].title} (ίδιες τιμές με το ${ECTS_SOURCES[1].title.slice(-9)}), ${ECTS_SOURCES[0].url}.`
-      + (sum.unknown ? ` Χωρίς τιμή: ${sum.unknown === 1 ? '1 νεότερο μάθημα' : `${sum.unknown} νεότερα μαθήματα`}.` : '')
-      + (moved ? ` Με ~: ${moved} μαθήματα άλλαξαν εξάμηνο από το 2020-21, η τιμή μπορεί να άλλαξε.` : '')
+    `ECTS ανά μάθημα: ${ECTS_SOURCES[0].title} (πίνακες κεφ. 8–9).`
+      + (sum.unknown ? ` Χωρίς τιμή: ${sum.unknown === 1 ? '1 μάθημα' : `${sum.unknown} μαθήματα`}.` : '')
+      + (legacy ? ` Με ~: η Πρακτική Άσκηση δεν έχει τιμή στον οδηγό· τιμή από το ${ECTS_SOURCES[1].title}.` : '')
       + (user ? ` ${user} τιμές από αρχείο του χρήστη.` : ''),
     `Κανόνες και μαθήματα: Οδηγός Σπουδών ΣΗΜΜΥ ΕΜΠ ${GUIDE_YEAR}. Ανεπίσημο εργαλείο· επιβεβαίωσε στη Γραμματεία πριν τη δήλωση.`,
   ];

@@ -1,7 +1,9 @@
 /**
- * Course catalogue for semesters 6–9, transcribed from the ΣΗΜΜΥ ΕΜΠ study guide 2024-25 (ch. 8.6–8.7 and 9).
+ * Course catalogue for semesters 6–9, transcribed from the ΣΗΜΜΥ ΕΜΠ study guide 2024-25 (ch. 8.6–8.7 and 9)
+ * and checked line by line against the 2025-26 guide: same 177 courses, codes, semesters and flows;
+ * the only change is that 3356 is not taught in 2025-26.
  * Line format:  `#<category>|<name>` starts a category, `<code>|<name>[|‡]` adds a course.
- * `‡` marks a course the guide lists as not taught in 2024-25.
+ * `‡` marks a course the guide lists as not taught in 2025-26.
  * The course id is the 4-digit part of the code (unique across the guide); the semester is the last part.
  */
 export type FlowId = 'Υ' | 'Λ' | 'Η' | 'Δ' | 'Τ' | 'Σ' | 'Ζ' | 'Ε' | 'Ο' | 'Ι';
@@ -23,7 +25,7 @@ export interface Category {
   ids: string[];
 }
 
-export const GUIDE_YEAR = '2024-25';
+export const GUIDE_YEAR = '2025-26';
 
 const RAW = `
 #Υ|Υπολογιστικά Συστήματα
@@ -91,7 +93,7 @@ const RAW = `
 3.5.3367.9|Οπτικά Δίκτυα Επικοινωνίας
 #Τ|Κύματα και Τηλεπικοινωνίες
 3.2.3057.6|Μικροκύματα
-3.1.3356.6|Οπτική Επιστήμη και Τεχνολογία
+3.1.3356.6|Οπτική Επιστήμη και Τεχνολογία|‡
 3.2.3338.6|Συστήματα Διαμόρφωσης, Μετάδοσης και Μεταγωγής
 3.1.3303.7|Διάδοση σε Ιονισμένα Μέσα
 3.2.3300.7|Κεραίες

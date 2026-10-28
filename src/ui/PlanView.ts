@@ -3,7 +3,7 @@
  * Mandatory courses are fixed, "k of n" groups are picked by the user, the rest are electives or free.
  */
 import { CATEGORIES, COURSES, type CatId } from '../data/catalog';
-import { CORE8, DIR, ELEC_DRAWING, FLOW_ORDER, PRAKTIKI, SHAPES, type CoreChoice } from '../data/rules';
+import { CORE8, DIR, ELEC_DRAWING, FLOW_ORDER, PRAKTIKI, SHAPES, ruleLine, type CoreChoice } from '../data/rules';
 import { COMBO_BY_KEY, matches, type Combo } from '../domain/combos';
 import {
   CONFIDENCE_TEXT, DIPLOMA_ECTS, ECTS_SEMESTERS_1_5, ECTS_SOURCES, ECTS_THESIS, confidenceOf, ectsOf, ectsOrigin, fmtEcts, sumEcts,
@@ -25,11 +25,11 @@ function row(id: string, st: RowState, tag: string): string {
   const c = COURSES[id];
   const e = ectsOf(id, ectsMap);
   const conf = ectsOrigin(id, ectsMap) === 'builtin' ? confidenceOf(id) : null;
-  const approx = conf === 'moved' ? '≈' : '';
+  const approx = conf === 'legacy' ? '≈' : '';
   const pressed = st === 'req' || st.startsWith('on') || st === 'free';
   const locked = st === 'req' || st === 'na';
   return `<button type="button" class="crs ${st}" data-id="${id}" data-focus-key="crs-${id}" aria-pressed="${pressed}" ${locked ? 'aria-disabled="true"' : ''}>
-    <span class="box" aria-hidden="true"></span><span class="tx"><span class="cn">${esc(c.name)}</span><span class="cc">${esc(c.code)}${e === null ? '' : ` · <span ${approx ? `title="${esc(CONFIDENCE_TEXT.moved)}"` : ''}>${approx}${fmtEcts(e)} ECTS</span>`}</span></span>${tag ? `<span class="ct">${esc(tag)}</span>` : ''}</button>`;
+    <span class="box" aria-hidden="true"></span><span class="tx"><span class="cn">${esc(c.name)}</span><span class="cc">${esc(c.code)}${e === null ? '' : ` · <span ${approx ? `title="${esc(CONFIDENCE_TEXT.legacy)}"` : ''}>${approx}${fmtEcts(e)} ECTS</span>`}</span></span>${tag ? `<span class="ct">${esc(tag)}</span>` : ''}</button>`;
 }
 
 function bySem(ids: readonly string[]): [number, string[]][] {
@@ -124,7 +124,7 @@ export class PlanView {
     const t69 = pe.spec.total + pe.core.total, unk = pe.spec.unknown + pe.core.unknown;
     const diploma = ECTS_SEMESTERS_1_5 + t69 + ECTS_THESIS, diff = diploma - DIPLOMA_ECTS;
     const planIds = pe.ids.concat([ELEC_DRAWING, s.core]);
-    const moved = planIds.filter(id => ectsOrigin(id, s.ects) === 'builtin' && confidenceOf(id) === 'moved');
+    const legacy = planIds.filter(id => ectsOrigin(id, s.ects) === 'builtin' && confidenceOf(id) === 'legacy');
     const userVals = planIds.filter(id => ectsOrigin(id, s.ects) === 'user').length;
     const complete = a.total === 23;
     const ectsBlock = `
@@ -135,9 +135,9 @@ export class PlanView {
       </div>
       <p class="ects-dip">Δίπλωμα${complete ? '' : ' μέχρι τώρα'}: ${ECTS_SEMESTERS_1_5} <small>(1ο–5ο)</small> + ${fmtEcts(t69)} + ${ECTS_THESIS} <small>(διπλωματική)</small> = <b>${fmtEcts(diploma)}${unk ? '<small>+?</small>' : ''}</b>${complete && !unk ? ` <span class="${diff > 0 ? 'over' : diff < 0 ? 'under' : 'eq'}">${diff === 0 ? 'ακριβώς 300' : `${diff > 0 ? '+' : ''}${fmtEcts(diff)} από τα 300`}</span>` : ''}</p>
       ${range ? `<p class="hnote">Ο συνδυασμός ${esc(c.label)} δίνει <b>${range.min}–${range.max}</b> ECTS στα 23 μαθήματα εμβάθυνσης, ανάλογα με το ποια θα διαλέξεις.</p>` : ''}
-      <p class="hnote">Τιμές ανά μάθημα από το <a href="${ECTS_SOURCES[0].url}" target="_blank" rel="noopener">Undergraduate Curriculum 2020-21</a> της σχολής, ίδιες με το 2018-19. Ο ελληνικός οδηγός δίνει μόνο το σύνολο (${DIPLOMA_ECTS}, §1.4).${
-        unk ? ` Χωρίς τιμή: ${unk} ${unk === 1 ? 'μάθημα' : 'μαθήματα'} του πλάνου (νεότερα του 2020-21).` : ''}${
-        moved.length ? ` Με ≈: ${moved.length} ${moved.length === 1 ? 'μάθημα άλλαξε' : 'μαθήματα άλλαξαν'} εξάμηνο από τότε, η τιμή μπορεί να άλλαξε.` : ''}${
+      <p class="hnote">Τιμές ανά μάθημα από τον <a href="${ECTS_SOURCES[0].url}" target="_blank" rel="noopener">Οδηγό Σπουδών 2025-26</a> (πίνακες κεφ. 8–9, ίδιες με τις περιγραφές μαθημάτων).${
+        unk ? ` Χωρίς τιμή: ${unk} ${unk === 1 ? 'μάθημα' : 'μαθήματα'} του πλάνου.` : ''}${
+        legacy.length ? ` Με ≈: ${legacy.length === 1 ? 'η Πρακτική Άσκηση, που' : `${legacy.length} μαθήματα, που`} δεν έχει τιμή στον οδηγό· τιμή από το πρόγραμμα 2020-21.` : ''}${
         userVals ? ` ${userVals} τιμές από δικό σου αρχείο.` : ''}</p>`;
     const bad = list.filter(x => !x.ok).length;
     const d = DIR[c.dir];
@@ -159,7 +159,7 @@ export class PlanView {
         <div class="chips">${chips}</div>
         <h2 class="plan-title" style="--c:${dirVar(c)}"><i aria-hidden="true"></i>${esc(c.label)}</h2>
         <p class="plan-meta">Κατεύθυνση ${esc(d.long)} · ${esc(SHAPES[c.shape].name)} + ${esc(freeText(c.free))}</p>
-        <p class="plan-rule">${c.rules.map(r => `Κανόνας <span class="mono">${r}</span>: <code>${esc(d.ruleText[r])}</code>`).join('<br>')}</p>
+        <p class="plan-rule">${c.rules.map(r => `Κανόνας <span class="mono">${r}</span>: <code>${esc(ruleLine(c.dir, r, c.shape))}</code>`).join('<br>')}</p>
         ${slotMeter(c, a)}
         <section><h3 class="label">Έλεγχος</h3>
           <ul class="checks">${list.map(x => `<li class="${x.ok ? 'ok' : 'bad'}"><span class="ic">${x.ok ? '✓' : '✕'}</span><span>${esc(x.text)}</span></li>`).join('')}</ul></section>

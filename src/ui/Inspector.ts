@@ -1,7 +1,7 @@
 /**
  * Right panel: the selected combination and the list of combinations that remain.
  */
-import { DIR, DIRECTIONS, SHAPES, SHAPE_ORDER } from '../data/rules';
+import { DIR, DIRECTIONS, SHAPES, SHAPE_ORDER, ruleLine } from '../data/rules';
 import { COMBO_BY_KEY, matches, type Combo } from '../domain/combos';
 import { fmtEcts } from '../data/ects';
 import { planEcts } from '../domain/ectsRange';
@@ -61,7 +61,7 @@ export class Inspector {
       <dl class="kv">
         <dt>Κατεύθυνση</dt><dd>${esc(d.name)}</dd>
         <dt>Σχήμα</dt><dd>${esc(SHAPES[c.shape].name)} + ${esc(freeText(c.free))}</dd>
-        <dt>Κανόνας</dt><dd>${c.rules.map(r => `<span class="mono">${r}</span> ${esc(d.ruleText[r])}`).join('<br>')}</dd>
+        <dt>Κανόνας</dt><dd>${c.rules.map(r => `<span class="mono">${r}</span> ${esc(ruleLine(c.dir, r, c.shape))}`).join('<br>')}</dd>
         ${ectsRow}
         <dt>Πλάνο</dt><dd><span class="chip ${bad ? 'bad' : 'ok'}">${bad ? `${bad} εκκρεμότητες` : 'Έγκυρο'}</span>
           ${matches(c, s.filters) ? '' : '<span class="chip">Εκτός φίλτρων</span>'}</dd>

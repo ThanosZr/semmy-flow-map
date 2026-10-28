@@ -127,7 +127,7 @@ export class ViewportChrome {
       ${main ? `<span class="sb-item hide-s">ανάλυση ${fmtRatio(main.pixelRatio)} · ${main.buffer[0]}×${main.buffer[1]} px</span>` : ''}
       <span class="sb-item hide-m">${st.msaa ? 'MSAA' : 'χωρίς MSAA'} · όριο ${st.fpsCap ? st.fpsCap + ' fps' : 'κανένα'}</span>
       <span class="sb-spacer"></span>
-      <span class="sb-item hide-m">Οδηγός Σπουδών ΣΗΜΜΥ ${GUIDE_YEAR} · ECTS: πρόγραμμα 2020-21 · ανεπίσημο εργαλείο</span>`;
+      <span class="sb-item hide-m">Οδηγός Σπουδών ΣΗΜΜΥ ${GUIDE_YEAR} (κανόνες, μαθήματα, ECTS) · ανεπίσημο εργαλείο</span>`;
     for (const [el, r] of [[this.els.stats, r1], [this.courseEls.stats, r2]] as const) {
       el.hidden = !st.showStats || !r;
       if (st.showStats && r) el.innerHTML = statsHtml(r);

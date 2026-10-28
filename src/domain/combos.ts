@@ -75,9 +75,17 @@ function enumerate(): Combo[] {
         for (let j = i + 1; j < others.length; j++)
           add(d, { ...base(), [others[i]]: 'H', [others[j]]: 'H' }, 'α');
     }
-    // (β), (γ)
+    // (β), (γ): {F, ½H} + one of `third` as full → 2 full + ½ + 5 free.
+    //     On top of that, 4 of the 5 free courses may form a second half flow of any other flow
+    //     (2 full + 2 × ½ + 1 free). The guide's table (2025-26, p. 41) marks every other flow in the
+    //     (β)/(γ) rows "δεν επιτρέπεται ως πλήρης", i.e. allowed as half; Ο and Ι included (rule v
+    //     only limits them as full flows to option (α)). Rule iv still applies when Ο or Ι is in.
     for (const [rule, x] of [['β', d.b], ['γ', d.c]] as const)
-      for (const t of x.third) add(d, { [x.F]: 'F', [x.H]: 'H', [t]: 'F' }, rule);
+      for (const t of x.third) {
+        const base = (): Combo['flows'] => ({ [x.F]: 'F', [x.H]: 'H', [t]: 'F' });
+        add(d, base(), rule);
+        for (const o of FLOW_ORDER) if (!(o in base())) add(d, { ...base(), [o]: 'H' }, rule);
+      }
   }
   list.forEach(c => c.rules.sort());
   return list;

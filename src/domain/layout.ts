@@ -12,7 +12,8 @@ export type Vec3 = [number, number, number];
 
 /** Anchor positions as [latitude, longitude] in degrees.
  *  The 8 core flows ring the equator with each direction's pair side by side;
- *  Ο (management) and Ι (biomedical) sit on the poles: they join any direction, only through rule (α). */
+ *  Ο (management) and Ι (biomedical) sit on the poles: they join any direction, as full flows only through rule (α),
+ *  as half flows also on top of (β)/(γ). */
 export const ANCHOR_LATLON: Readonly<Record<FlowId, [number, number]>> = {
   'Υ': [14, 0], 'Λ': [-14, 45], 'Δ': [14, 90], 'Τ': [-14, 135],
   'Ζ': [14, 180], 'Ε': [-14, 225], 'Σ': [14, 270], 'Η': [-14, 315],

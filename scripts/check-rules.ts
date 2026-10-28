@@ -10,7 +10,7 @@ import { COURSE_IDS, courseStates, IN_PLAN, layoutCourses } from '../src/domain/
 import { ectsTemplateCsv, parseEctsCsv, parseImport } from '../src/io/transfer';
 import { defaultState } from '../src/state/app-state';
 import { DEFAULT_SETTINGS, sanitizeSettings } from '../src/state/settings';
-import { BUILTIN_ECTS, ECTS_SEMESTERS_1_5, ECTS_TARGET_6_9, ECTS_THESIS, confidenceOf } from '../src/data/ects';
+import { BUILTIN_ECTS, ECTS_SEMESTERS_1_5, ECTS_TARGET_6_9, ECTS_THESIS, GUIDE_ECTS, UG2021_ECTS, confidenceOf } from '../src/data/ects';
 import { BASE_KEYS, PRESETS, contrast, isHex } from '../src/data/themes';
 import { ectsSpread, ectsTable, planEcts } from '../src/domain/ectsRange';
 import { planLink, readPlanHash } from '../src/io/share';
@@ -25,16 +25,68 @@ for (const f of FLOW_ORDER) ok(CATEGORIES[f].ids.length >= 10, `flow ${f} lists 
 // combinations
 const perDir = Object.fromEntries(DIRECTIONS.map(d => [d.id, COMBOS.filter(c => c.dir === d.id).length]));
 console.log('   per direction:', perDir, 'total', COMBOS.length);
-ok(perDir.ES === 92 && perDir.PL === 48 && perDir.TL === 49 && perDir.EN === 50, 'combination counts per direction are 92 / 48 / 49 / 50');
+ok(perDir.ES === 127 && perDir.PL === 76 && perDir.TL === 84 && perDir.EN === 92 && COMBOS.length === 379,
+  'combination counts per direction are 127 / 76 / 84 / 92 (379)');
+
+// Independent check, straight from the table "Επιλογή Ροών ανά Κατεύθυνση Σπουδών" (guide 2025-26, p. 41):
+// '√' full, '½' half, 'b' "δεν επιτρέπεται ως πλήρης", '.' anything. Columns Υ Λ Η Δ Τ Σ Ζ Ε Ο Ι.
+// With §7.5 (i) and the footnote of vii, a valid set is 3 full, 2 full + ½, or 2 full + ½ + ½ (Φ, Μ never, rule vi).
+// Every assignment of none/½/full to the 10 flows (3^10) is tested against the rows, without using DIRECTIONS.
+{
+  const COLS: readonly FlowId[] = ['Υ', 'Λ', 'Η', 'Δ', 'Τ', 'Σ', 'Ζ', 'Ε', 'Ο', 'Ι'];
+  const TABLE: Record<string, [string, string][]> = {
+    ES: [['α', '..√..√....'], ['α', '√.√.......'], ['β', '.b√b.½.bbb'], ['γ', 'b.½.b√b.bb']],
+    PL: [['α', '√√........'], ['γ', '½√b.b.bbbb'], ['β', '√½b.b.bbbb']],
+    TL: [['α', '...√√.....'], ['β', 'bb.½√.bbbb'], ['γ', '..b√½.bbbb']],
+    EN: [['α', '......√√..'], ['β', 'bbb...½√bb'], ['γ', '.b.bb.√½bb']],
+  };
+  ok(Object.values(TABLE).every(rows => rows.every(([, r]) => [...r].length === 10)), 'guide table transcribed with 10 columns per row');
+  const expected = new Map<string, string>();
+  const v: ('' | 'F' | 'H')[] = Array(10).fill('');
+  const walk = (i: number) => {
+    if (i === 10) {
+      const nF = v.filter(x => x === 'F').length, nH = v.filter(x => x === 'H').length;
+      if (!((nF === 3 && nH === 0) || (nF === 2 && (nH === 1 || nH === 2)))) return;
+      const canon = COLS.map((f, k) => (v[k] === 'H' ? '½' + f : v[k] === 'F' ? f : '')).join('');
+      for (const [dir, rows] of Object.entries(TABLE)) {
+        const rules = rows.filter(([, r]) => [...r].every((cell, k) =>
+          cell === '√' ? v[k] === 'F' : cell === '½' ? v[k] === 'H' : cell === 'b' ? v[k] !== 'F' : true)).map(([rule]) => rule);
+        if (rules.length) expected.set(`${dir}-${canon}`, [...new Set(rules)].sort().join());
+      }
+      return;
+    }
+    for (const s of ['', 'F', 'H'] as const) { v[i] = s; walk(i + 1); }
+  };
+  walk(0);
+  const got = new Map(COMBOS.map(c => [c.key, c.rules.join()]));
+  const missing = [...expected.keys()].filter(k => !got.has(k)), extra = [...got.keys()].filter(k => !expected.has(k));
+  const wrongRule = [...expected].filter(([k, r]) => got.has(k) && got.get(k) !== r);
+  if (missing.length || extra.length || wrongRule.length) console.error('   missing', missing.slice(0, 8), 'extra', extra.slice(0, 8), 'rule', wrongRule.slice(0, 8));
+  ok(!missing.length && !extra.length && !wrongRule.length && expected.size === COMBOS.length,
+    `the app lists exactly the ${expected.size} combinations of the guide's table, with the same rules (α/β/γ)`);
+}
+
 ok(COMBOS.every(c => {
   const n = c.order.reduce((s, f) => s + FLOW_SIZE[c.flows[f]!], 0);
   return n + c.free === TOTAL_COURSES && c.free <= 5;
 }), 'every combination fills exactly 23 courses with at most 5 free');
 ok(COMBOS.every(c => !c.flows['Φ' as FlowId] && !c.flows['Μ' as FlowId]), 'Φ and Μ never appear as flows');
-ok(COMBOS.filter(c => c.flows['Ο'] || c.flows['Ι']).every(c => c.rules.includes('α')), 'Ο and Ι only appear through rule (α)');
+ok(COMBOS.filter(c => c.flows['Ο'] === 'F' || c.flows['Ι'] === 'F').every(c => c.rules.join() === 'α'), 'Ο and Ι are full flows only under (α) (rule v)');
+ok(['β', 'γ'].every(r => COMBOS.some(c => c.rules.includes(r as 'β') && c.flows['Ο'] === 'H')), 'Ο and Ι can be the extra half under (β)/(γ)');
 ok(COMBO_BY_KEY.get('ES-ΥΗ½Σ')?.rules.join() === 'α,β', 'Η + Υ + ½Σ is reachable by both (α) and (β)');
-ok(COMBOS.filter(c => c.dir === 'EN' && c.rules.includes('γ')).map(c => c.key).join() === 'EN-ΥΖ½Ε,EN-ΗΖ½Ε,EN-ΣΖ½Ε',
+ok(COMBOS.filter(c => c.dir === 'EN' && c.rules.includes('γ') && c.shape === 'F2H1').map(c => c.key).join() === 'EN-ΥΖ½Ε,EN-ΗΖ½Ε,EN-ΣΖ½Ε',
   '(γ) for Ενέργεια is {½Ε, Ζ} + {Υ ή Η ή Σ}');
+ok(COMBO_BY_KEY.get('EN-½ΥΗΖ½Ε')?.rules.join() === 'γ', 'Ενέργεια: Η + Ζ + ½Ε + ½Υ exists, under (γ)');
+ok((['Υ', 'Λ', 'Η', 'Δ', 'Τ', 'Ο', 'Ι'] as FlowId[]).every(x => COMBOS.some(c => c.dir === 'EN' && c.shape === 'F2H2'
+  && c.flows['Ζ'] === 'F' && c.flows['Σ'] === 'F' && c.flows['Ε'] === 'H' && c.flows[x] === 'H')), 'Ενέργεια: Ζ + Σ + ½Ε + ½(any of the other 7) all exist');
+ok(DIRECTIONS.every(d => (['α', 'β', 'γ'] as const).every(r => COMBOS.some(c => c.dir === d.id && c.rules.includes(r) && c.flows['Σ'] === 'F') || (d.id === 'ES' && r === 'β'))),
+  'Σ as a full flow is allowed in every direction under every rule (ES β has Σ as its own ½)');
+ok(COMBOS.filter(c => c.dir === 'EN').some(c => c.flows['Ε'] === 'H') && COMBOS.filter(c => c.dir === 'EN').some(c => c.flows['Ζ'] === 'H'),
+  'Ενέργεια does not require both Ε and Ζ full');
+ok(COMBOS.filter(c => c.shape === 'F2H1' && !c.rules.includes('α')).every(c =>
+  FLOW_ORDER.filter(f => !c.flows[f]).every(f => COMBOS.some(x => x.dir === c.dir && x.shape === 'F2H2'
+    && Object.entries(c.flows).every(([g, k]) => x.flows[g as FlowId] === k) && x.flows[f] === 'H'))),
+  'every (β)/(γ) 2 + ½ combination also exists with ½ of any other flow on top');
 ok(filterCombos({ dir: 'PL', shape: 'F3', flows: { 'Σ': 'F' } }).length === 1, 'Πληροφορική + 3 πλήρεις + Σ leaves one combination');
 
 // requirements reference courses of the right flow
@@ -63,7 +115,7 @@ const oiY = COMBOS.find(c => c.dir === 'PL' && c.flows['Υ'] === 'F' && c.flows[
 ok(allocate(oiY, ['3213', '3207', '3257', '3377', '3362']).coreMandatory === null, 'the second option of a chosen flow’s "1 of 2" does not satisfy rule iv');
 const tdi = COMBO_BY_KEY.get('TL-ΔΤΙ')!;
 ok(Boolean(tdi) && tdi.rules.join() === 'α' && tdi.free === 2, 'Τ + Δ + Ι (all full) is allowed for Επικοινωνίες under (α), with 2 free');
-const tdiPicks = ['3259', '3267', '3331', '3272', '3060', '3370', '3312', '3278', '3356', '3303', '3347'].filter(id => !COURSES[id].na);
+const tdiPicks = ['3259', '3267', '3331', '3272', '3060', '3370', '3312', '3278', '3335', '3303', '3347'].filter(id => !COURSES[id].na);
 ok(allocate(tdi, tdiPicks.concat('3346')).coreMandatory === null, 'with full Δ, a Δ course cannot be the rule-iv course');
 ok(allocate(tdi, tdiPicks.concat('3136')).coreMandatory === '3136', 'with Τ + Δ + Ι, a Υ mandatory course satisfies rule iv');
 const tdiExtra = allocate(tdi, tdiPicks.concat('3136', '3382'));
@@ -110,8 +162,14 @@ ok(threw, 'unrelated JSON is refused with a message');
 const conf: Record<string, number> = {};
 for (const id of Object.keys(COURSES)) conf[confidenceOf(id)] = (conf[confidenceOf(id)] ?? 0) + 1;
 console.log('   ECTS confidence:', conf);
-ok(Object.keys(BUILTIN_ECTS).length === 168 && conf.unknown === 9 && conf.moved === 8, '168 courses have ECTS from the 2020-21 curriculum, 9 newer ones have none, 8 moved semester');
-ok(Object.values(BUILTIN_ECTS).every(v => [2, 4, 5, 6].includes(v)), 'every shipped ECTS value is 2, 4, 5 or 6');
+ok(Object.keys(GUIDE_ECTS).length === 176 && Object.keys(GUIDE_ECTS).every(id => COURSES[id]),
+  '176 courses have ECTS from the 2025-26 guide, all of them in the catalogue');
+ok(Object.keys(BUILTIN_ECTS).length === Object.keys(COURSES).length && conf.confirmed === 166 && conf.guide === 10 && conf.legacy === 1 && !conf.unknown,
+  'every course has ECTS: 166 same in guide and 2020-21, 10 only/changed in the guide, Πρακτική from 2020-21');
+ok(Object.keys(GUIDE_ECTS).filter(id => id in UG2021_ECTS && UG2021_ECTS[id] !== GUIDE_ECTS[id]).join() === '3181',
+  'the 2025-26 guide differs from the 2020-21 curriculum only for 3181 (4 → 3)');
+ok(BUILTIN_ECTS['3181'] === 3 && BUILTIN_ECTS['3403'] === 5 && BUILTIN_ECTS['3400'] === 3 && BUILTIN_ECTS['3394'] === 6, 'spot values: 3181 = 3, 3403 = 5, 3400 = 3, Πρακτική = 6');
+ok(Object.values(BUILTIN_ECTS).every(v => [2, 3, 4, 5, 6].includes(v)), 'every shipped ECTS value is 2, 3, 4, 5 or 6');
 ok(COMBOS.every(c => c.order.every(f => requirement(f, c.flows[f]!, c.dir).fixed.every(id => BUILTIN_ECTS[id] !== undefined))),
   'every fixed mandatory course has a known ECTS value');
 ok(ECTS_SEMESTERS_1_5 + ECTS_TARGET_6_9 + ECTS_THESIS === 300, 'diploma split 150 + 120 + 30 = 300');
@@ -127,7 +185,8 @@ for (const c of COMBOS) {
 }
 ok(boundsOk, 'every combination has ECTS bounds, each reached by a valid 23-course plan');
 const sp = ectsSpread(T);
-ok(sp[0] === 110 && sp[1] === 130, `ECTS of the 23 specialisation courses range ${sp[0]}–${sp[1]}`);
+// 108: 2 + ½ with 5 cheap free courses (humanities 2, 3400 and 3401 at 3 each, two at 4); 130: all 6-ECTS options
+ok(sp[0] === 108 && sp[1] === 130, `ECTS of the 23 specialisation courses range ${sp[0]}–${sp[1]}`);
 const tdiE = T.get('TL-ΔΤΙ')!;
 ok(tdiE.min.total === 114 && tdiE.max.total === 122, `Τ + Δ + Ι gives ${tdiE.min.total}–${tdiE.max.total} ECTS`);
 ok(ectsTable({ '3136': 30 }, '3068').get('PL-ΥΛΣ')!.min.total >= T.get('PL-ΥΛΣ')!.min.total + 24, 'user ECTS values change the bounds');
