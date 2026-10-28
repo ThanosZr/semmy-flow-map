@@ -69,6 +69,7 @@ const GROUPS: { title: string; note?: () => string; fields: Field[] }[] = [
       { kind: 'switch', key: 'courseGlobe', label: 'Δεύτερη σφαίρα: μαθήματα', help: 'Δίπλα στους συνδυασμούς, τα μαθήματα του επιλεγμένου συνδυασμού. Κλειστή = δεν σχεδιάζεται καθόλου.' },
       { kind: 'switch', key: 'autoRotate', label: 'Αυτόματη περιστροφή', help: 'Σταματά όταν ο δείκτης είναι πάνω στη σφαίρα.' },
       { kind: 'range', key: 'rotateSpeed', label: 'Ταχύτητα περιστροφής', format: v => `${Math.round(60 / v)} δ/γύρο` },
+      { kind: 'range', key: 'zoomSpeed', label: 'Ταχύτητα zoom (ροδέλα)', help: 'Χαμήλωσέ την αν η ροδέλα σου κάνει πολλά βήματα σε κάθε «κλικ» (π.χ. ×3).', format: v => `${(Math.round((1.08 ** v - 1) * 1000) / 10).toString().replace('.', ',')}% ανά βήμα` },
       { kind: 'switch', key: 'autoFocus', label: 'Στροφή προς τα αποτελέσματα', help: 'Μετά από κάθε φίλτρο η κάμερα γυρίζει προς τους συνδυασμούς που απομένουν.' },
       { kind: 'switch', key: 'transitions', label: 'Κινούμενες μεταβάσεις' },
       { kind: 'range', key: 'pointSize', label: 'Μέγεθος σημείων', format: v => `${v.toFixed(1)} px` },

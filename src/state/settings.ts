@@ -33,6 +33,8 @@ export interface Settings {
   autoRotate: boolean;
   autoFocus: boolean;
   rotateSpeed: number;
+  /** mouse-wheel zoom speed (1 = 8% per notch) */
+  zoomSpeed: number;
   transitions: boolean;
   pointSize: number;
   offOpacity: number;
@@ -54,7 +56,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   theme: 'blueprint', scheme: 'auto', colorsLight: {}, colorsDark: {},
   touchDock: 'auto', touchMode: 'rotate', dockSide: 'right', dockHidden: false, phoneLayout: 'side',
   resolution: 'auto', msaa: true, fpsCap: 60, gpu: 'low-power', detail: 'medium', showStats: false,
-  autoRotate: false, autoFocus: true, rotateSpeed: 0.6, transitions: !reduceMotion,
+  autoRotate: false, autoFocus: true, rotateSpeed: 0.6, zoomSpeed: 1, transitions: !reduceMotion,
   pointSize: 9, offOpacity: 0.3, backOpacity: 0.22,
   showGrid: true, showLinks: true, showLabels: true, courseGlobe: true, colorMode: 'direction',
   halfWeight: 0.5, spacing: 0.078, polePull: 3,
@@ -63,6 +65,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
 /** Value ranges, used by the settings panel and to sanitise stored values. */
 export const RANGES = {
   rotateSpeed: { min: 0.1, max: 3, step: 0.1 },
+  zoomSpeed: { min: 0.25, max: 3, step: 0.05 },
   pointSize: { min: 4, max: 18, step: 0.5 },
   offOpacity: { min: 0, max: 0.8, step: 0.02 },
   backOpacity: { min: 0, max: 0.8, step: 0.02 },

@@ -47,7 +47,13 @@ export interface SphereParts {
 }
 
 const FOV = 32;
-const MIN_DIST = 1.9, MAX_DIST = 9;
+const MIN_DIST = 2.2, MAX_DIST = 9;
+/** mouse wheel: distance factor for one standard notch (deltaY 100 px) at zoom speed 1 */
+const WHEEL_STEP = 1.08;
+/** one wheel event never counts for more than a standard notch, so ×3 / fast-scroll wheels stay gentle */
+const WHEEL_NOTCH = 100;
+/** the zoom target never runs further than this factor ahead of the current distance */
+const ZOOM_LEAD = 1.3;
 /** highest camera latitude for automatic moves (keeps OrbitControls away from the pole singularity) */
 const MAX_FLY_Y = Math.sin((78 * Math.PI) / 180);
 
@@ -71,6 +77,8 @@ export abstract class SphereView {
   protected hotAnchor: string | null = null;
   protected readonly tmp: [number, number, number] = [0, 0, 0];
   private userZoomed = false;
+  /** camera distance the wheel zoom is easing toward */
+  private zoomTo: number | null = null;
   /** camera move along a great circle: `from` rotated by an increasing share of `q` */
   private fly: { from: Vector3; q: Quaternion; t: number; dur: number; dist: number } | null = null;
   private readonly qStep = new Quaternion();
@@ -82,6 +90,8 @@ export abstract class SphereView {
   private exploring = false;
   /** a pinned card (touch): info plus action buttons */
   private card: CardTarget | null = null;
+  /** the pinned card came from a mouse click: compact, and hovering another point replaces it */
+  private cardMini = false;
   private visible = { page: true, onscreen: true, view: true };
   private gpuName = '';
   private webglVersion = '';
@@ -134,6 +144,8 @@ export abstract class SphereView {
   protected applyExtraSettings(_s: Settings, _changed: ReadonlySet<keyof Settings>, _prev: Settings): void { /* optional */ }
   /** buttons on the touch card of a point / an anchor */
   protected pointActions(_i: number): CardAction[] { return []; }
+  /** buttons on the small card a mouse click on a point opens (none: a plain tooltip, as before) */
+  protected clickActions(_i: number): CardAction[] { return []; }
   protected anchorActions(_id: string): CardAction[] { return []; }
   /** a card button was pressed; return true to keep the card open (it is redrawn) */
   protected onCardAction(_t: CardTarget, _act: string): boolean { return false; }
@@ -209,6 +221,10 @@ export abstract class SphereView {
     ctl.zoomSpeed = 0.7;
     ctl.minDistance = MIN_DIST;
     ctl.maxDistance = MAX_DIST;
+    // three 0.160 scales wheel and middle-drag zoom by 1 / (devicePixelRatio | 0): with the page zoomed below 100%
+    // that is 1 / 0 and a single notch jumps straight to the nearest or farthest distance. The wheel is handled
+    // in bindPointer instead; middle-drag zoom is switched off. Pinch zoom on touch is not affected.
+    ctl.mouseButtons = { ...ctl.mouseButtons, MIDDLE: null };
     ctl.autoRotate = this.settings.autoRotate;
     ctl.autoRotateSpeed = this.settings.rotateSpeed;
     ctl.addEventListener('change', () => this.loop.request());
@@ -221,7 +237,22 @@ export abstract class SphereView {
   }
 
   private bindPointer(c: HTMLCanvasElement): void {
-    c.addEventListener('wheel', () => { this.userZoomed = true; }, { passive: true });
+    // capture phase, so OrbitControls' own wheel zoom on the same canvas never runs (see createRenderer)
+    c.addEventListener('wheel', e => {
+      if (!this.controls?.enabled) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      // pixels, lines (Firefox: 3 per notch) or pages → pixels; one event counts for at most one notch
+      const px = e.deltaY * (e.deltaMode === 1 ? WHEEL_NOTCH / 3 : e.deltaMode === 2 ? WHEEL_NOTCH : 1);
+      const notches = Math.max(-1, Math.min(1, px / WHEEL_NOTCH));
+      if (!notches) return;
+      this.userZoomed = true;
+      this.fly = null; this.closeCard(); this.hideTip();
+      const d = this.camera.position.length();
+      const want = (this.zoomTo ?? d) * WHEEL_STEP ** (notches * this.settings.zoomSpeed);
+      this.zoomTo = Math.min(MAX_DIST, Math.max(MIN_DIST, d / ZOOM_LEAD, Math.min(d * ZOOM_LEAD, want)));
+      this.loop.request();
+    }, { passive: false, capture: true });
     c.addEventListener('pointerenter', () => { this.pointerInside = true; this.syncAutoRotate(); });
     c.addEventListener('pointerleave', e => {
       this.pointerInside = false;
@@ -242,9 +273,14 @@ export abstract class SphereView {
     c.addEventListener('pointermove', e => {
       if (this.exploring) { this.explore(e); return; }
       if (this.down) { this.down.moved += Math.abs(e.movementX) + Math.abs(e.movementY); if (this.down.moved > 4) return; }
-      if (e.pointerType === 'touch' || this.card) return;
+      if (e.pointerType === 'touch') return;
       const [x, y] = this.local(e);
       const i = this.pick(x, y);
+      if (this.card) {
+        // a click card stays while the pointer heads for its button; another point under the pointer replaces it
+        if (!this.cardMini || i < 0 || (this.card.kind === 'point' && this.card.i === i)) return;
+        this.closeCard();
+      }
       this.setHoverIndex(i);
       if (i >= 0) this.showTip(this.describePoint(i), x, y); else this.hideTip();
       c.style.cursor = i >= 0 ? 'pointer' : 'grab';
@@ -262,7 +298,10 @@ export abstract class SphereView {
       const i = this.pick(x, y);
       if (e.pointerType === 'touch') { if (i >= 0) this.openCard({ kind: 'point', i }); else this.closeCard(); return; }
       if (this.card) this.closeCard();
-      if (i >= 0) { this.onPointPick(i); this.showTip(this.describePoint(i), x, y); }
+      if (i < 0) return;
+      this.onPointPick(i);
+      if (this.clickActions(i).length) this.openCard({ kind: 'point', i }, true);
+      else this.showTip(this.describePoint(i), x, y);
     });
     c.addEventListener('pointercancel', () => { this.down = null; this.exploring = false; });
   }
@@ -296,8 +335,9 @@ export abstract class SphereView {
     return `${close ? '<button type="button" class="card-x" data-card-act="close" aria-label="Κλείσιμο">✕</button>' : ''}${body}${acts ? `<div class="card-acts">${acts}</div>` : ''}`;
   }
 
-  private openCard(t: CardTarget): void {
+  private openCard(t: CardTarget, mini = false): void {
     this.card = t;
+    this.cardMini = mini;
     if (t.kind === 'point') { this.hotAnchor = null; this.onAnchorHover(null); this.setHoverIndex(t.i); }
     else { this.setHoverIndex(-1); this.hotAnchor = t.id; this.onAnchorHover(t.id); }
     this.renderCard();
@@ -312,11 +352,12 @@ export abstract class SphereView {
       const q = this.points.positionOf(t.i, this.tmp);
       const v = this.v.set(q[0], q[1], q[2]).project(this.camera);
       p = [(v.x * 0.5 + 0.5) * this.w, (-v.y * 0.5 + 0.5) * this.h];
-      html = this.cardHtml(this.describePoint(t.i), this.pointActions(t.i), true);
+      html = this.cardHtml(this.describePoint(t.i), this.cardMini ? this.clickActions(t.i) : this.pointActions(t.i), true);
     } else {
       p = this.labels.screenOf(t.id, this.camera, this.w, this.h);
       html = this.cardHtml(this.describeAnchor(t.id), this.anchorActions(t.id), true);
     }
+    this.parts.tip.classList.toggle('mini', this.cardMini);
     if (p) this.placeTip(html, p[0], p[1], true);
   }
 
@@ -324,7 +365,8 @@ export abstract class SphereView {
     if (!this.card) return;
     const wasAnchor = this.card.kind === 'anchor';
     this.card = null;
-    this.parts.tip.classList.remove('card');
+    this.cardMini = false;
+    this.parts.tip.classList.remove('card', 'mini');
     this.hideTip();
     this.setHoverIndex(-1);
     if (wasAnchor) { this.hotAnchor = null; this.onAnchorHover(null); }
@@ -342,7 +384,7 @@ export abstract class SphereView {
     if (this.w >= 40 && this.h >= 40) this.shown = { w: this.w, h: this.h };
     this.camera.aspect = this.w / this.h;
     this.fitDist = this.fitDistance();
-    if (!this.userZoomed) this.camera.position.setLength(this.fitDist);
+    if (!this.userZoomed) { this.zoomTo = null; this.camera.position.setLength(this.fitDist); }
     this.camera.updateProjectionMatrix();
     this.points.uniforms.uRef.value = this.fitDist;
     this.renderer?.setPixelRatio(pixelRatioFor(this.settings.resolution));
@@ -378,6 +420,12 @@ export abstract class SphereView {
       this.camera.position.copy(this.v);
       this.camera.lookAt(0, 0, 0);
       if (f.t >= 1) this.fly = null; else more = true;
+    }
+    if (this.zoomTo !== null && !this.fly) {
+      const d = this.camera.position.length();
+      const next = this.settings.transitions ? d + (this.zoomTo - d) * (1 - Math.exp(-dt * 14)) : this.zoomTo;
+      if (Math.abs(this.zoomTo - next) < 1e-3) { this.camera.position.setLength(this.zoomTo); this.zoomTo = null; }
+      else { this.camera.position.setLength(next); more = true; }
     }
     if (this.controls) {
       const changed = this.controls.update(dt);
@@ -478,6 +526,7 @@ export abstract class SphereView {
 
   resetView(): void {
     this.userZoomed = false;
+    this.zoomTo = null;
     this.flyToward(0, 0.12, 1, this.fitDist, 0.6);
   }
 

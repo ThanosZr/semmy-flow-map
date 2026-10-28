@@ -32,7 +32,8 @@ void main() {
   vColor = aColor;
   vEmph = aEmph;
   vSel = aSel;
-  float persp = uRef / max(-mv.z, 0.001);
+  // grows with zoom, but never past 2.4× (very close views otherwise turn points into large discs)
+  float persp = min(uRef / max(-mv.z, 0.001), 2.4);
   float depth = mix(0.72, 1.0, clamp(vFace * 0.5 + 0.5, 0.0, 1.0));
   float dotPx = uSize * mix(0.42, 1.0, vActive) * depth * persp;
   float spritePx = aSel > 0.5 ? max(dotPx * 2.4, uSize * 2.0 * persp) : dotPx;

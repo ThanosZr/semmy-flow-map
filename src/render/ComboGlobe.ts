@@ -60,6 +60,8 @@ export class ComboGlobe extends SphereView {
   protected describePoint(i: number): string { return this.cb.describe(COMBOS[i].key); }
   protected describeAnchor(id: string): string { return this.cb.describeAnchor(id as FlowId); }
   protected pointActions(i: number): CardAction[] { return this.cb.pointActions(COMBOS[i].key); }
+  /** mouse click: the point is selected, and a small card offers the way to its course plan */
+  protected clickActions(): CardAction[] { return [{ id: 'plan', label: 'Πλάνο μαθημάτων ›', primary: true }]; }
   protected anchorActions(id: string): CardAction[] { return this.cb.anchorActions(id as FlowId); }
   protected onCardAction(t: CardTarget, act: string): boolean {
     return t.kind === 'point' ? this.cb.onPointAction(COMBOS[t.i].key, act) : this.cb.onAnchorAction(t.id as FlowId, act);
